@@ -19,6 +19,14 @@
 - **Real-time Progress**: TodoWrite integration for live progress tracking
 - **AI Code Review**: Intelligent code review powered by PAL MCP
 
+## Platform Support
+
+| Platform | Status |
+|----------|--------|
+| **macOS** | ✅ Fully Supported |
+| **Windows** | 🚧 Coming This Week |
+| **Linux** | 🔜 Planned |
+
 ## Requirements
 
 - [Claude Code](https://claude.ai/code) installed and configured
@@ -57,6 +65,99 @@ To enable multi-executor routing, add PAL MCP to `~/.claude.json`:
   }
 }
 ```
+
+### Installation Guide for AI Assistants
+
+> **Note**: This section is intended for AI coding assistants (Claude Code, Cursor, etc.) to help users install Nexus CLI.
+
+#### Copy & Paste to Your AI Assistant
+
+Simply copy the text below and send it to Claude Code, Codex, or any AI coding assistant:
+
+**English:**
+```
+Help me install Nexus CLI.
+
+For quick install, run:
+mkdir -p ~/.claude/commands && curl -fsSL https://raw.githubusercontent.com/CoderMageFox/nexus-cli/main/commands/nexus.md -o ~/.claude/commands/nexus.md
+
+For full install with dependency check, run:
+cd ~/.claude && git clone https://github.com/CoderMageFox/nexus-cli.git skills/nexus-cli && ~/.claude/skills/nexus-cli/install-nexus-skill.sh
+
+After installation, verify with: ls ~/.claude/commands/nexus.md
+```
+
+**中文:**
+```
+帮我安装 Nexus CLI。
+
+快速安装，运行：
+mkdir -p ~/.claude/commands && curl -fsSL https://raw.githubusercontent.com/CoderMageFox/nexus-cli/main/commands/nexus.md -o ~/.claude/commands/nexus.md
+
+完整安装（包含依赖检查），运行：
+cd ~/.claude && git clone https://github.com/CoderMageFox/nexus-cli.git skills/nexus-cli && ~/.claude/skills/nexus-cli/install-nexus-skill.sh
+
+安装后验证：ls ~/.claude/commands/nexus.md
+```
+
+---
+
+#### Method 1: One-Line Install (Fastest)
+
+Download the skill file directly - no cloning required:
+
+```bash
+mkdir -p ~/.claude/commands && curl -fsSL https://raw.githubusercontent.com/CoderMageFox/nexus-cli/main/commands/nexus.md -o ~/.claude/commands/nexus.md
+```
+
+⚠️ **Note**: This method only installs the core skill file. Dependencies (PAL MCP, Gemini CLI, Codex CLI) must be installed separately if needed.
+
+#### Method 2: Full Install with Configuration (Recommended)
+
+Includes interactive configuration wizard and automatic dependency installation:
+
+```bash
+cd ~/.claude && git clone https://github.com/CoderMageFox/nexus-cli.git skills/nexus-cli && ~/.claude/skills/nexus-cli/install-nexus-skill.sh
+```
+
+✅ **This method will**:
+- Install the Nexus skill
+- Check and install missing dependencies (PAL MCP, Gemini CLI, Codex CLI, jq, uv)
+- Generate customized `.nexus-config.yaml`
+- Configure quality gates and executor preferences
+
+#### Comparison
+
+| Feature | One-Line Install | Full Install |
+|---------|-----------------|--------------|
+| Speed | ⚡ Fastest | 🐢 ~2 min |
+| Dependencies | ❌ Manual | ✅ Auto-install |
+| Configuration | ❌ Default only | ✅ Interactive wizard |
+| Best for | Quick start, CI/CD | First-time setup |
+
+#### Step-by-Step for AI Assistants
+
+1. **Check Platform**: Verify user is on macOS (Windows support coming soon)
+   ```bash
+   uname -s  # Should return "Darwin" for macOS
+   ```
+
+2. **Choose Install Method**:
+   - New users → Use **Full Install** (Method 2)
+   - Experienced users / just need the skill → Use **One-Line Install** (Method 1)
+
+3. **Verify Installation**:
+   ```bash
+   ls -la ~/.claude/commands/nexus.md  # Should exist after installation
+   ```
+
+4. **Check Dependencies** (if using One-Line Install):
+   ```bash
+   # Optional: Install PAL MCP for multi-executor support
+   # Add to ~/.claude.json under mcpServers
+   ```
+
+**Post-Installation**: The `/nexus` command will be available in Claude Code after restarting the session.
 
 ## Usage
 

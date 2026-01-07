@@ -19,6 +19,14 @@
 - **实时进度**：集成 TodoWrite 实现实时进度跟踪
 - **AI 代码审查**：由 PAL MCP 驱动的智能代码审查
 
+## 平台支持
+
+| 平台 | 状态 |
+|------|------|
+| **macOS** | ✅ 完全支持 |
+| **Windows** | 🚧 本周内支持 |
+| **Linux** | 🔜 计划中 |
+
 ## 环境要求
 
 - [Claude Code](https://claude.ai/code) 已安装并配置
@@ -57,6 +65,99 @@ cd nexus-cli
   }
 }
 ```
+
+### AI 助手安装指南
+
+> **说明**：本部分供 AI 编程助手（Claude Code、Cursor 等）帮助用户安装 Nexus CLI。
+
+#### 复制粘贴给你的 AI 助手
+
+只需复制以下文字发送给 Claude Code、Codex 或任何 AI 编程助手：
+
+**中文:**
+```
+帮我安装 Nexus CLI。
+
+快速安装，运行：
+mkdir -p ~/.claude/commands && curl -fsSL https://raw.githubusercontent.com/CoderMageFox/nexus-cli/main/commands/nexus.md -o ~/.claude/commands/nexus.md
+
+完整安装（包含依赖检查），运行：
+cd ~/.claude && git clone https://github.com/CoderMageFox/nexus-cli.git skills/nexus-cli && ~/.claude/skills/nexus-cli/install-nexus-skill.sh
+
+安装后验证：ls ~/.claude/commands/nexus.md
+```
+
+**English:**
+```
+Help me install Nexus CLI.
+
+For quick install, run:
+mkdir -p ~/.claude/commands && curl -fsSL https://raw.githubusercontent.com/CoderMageFox/nexus-cli/main/commands/nexus.md -o ~/.claude/commands/nexus.md
+
+For full install with dependency check, run:
+cd ~/.claude && git clone https://github.com/CoderMageFox/nexus-cli.git skills/nexus-cli && ~/.claude/skills/nexus-cli/install-nexus-skill.sh
+
+After installation, verify with: ls ~/.claude/commands/nexus.md
+```
+
+---
+
+#### 方式一：一行命令安装（最快）
+
+直接下载 skill 文件，无需克隆整个仓库：
+
+```bash
+mkdir -p ~/.claude/commands && curl -fsSL https://raw.githubusercontent.com/CoderMageFox/nexus-cli/main/commands/nexus.md -o ~/.claude/commands/nexus.md
+```
+
+⚠️ **注意**：此方式仅安装核心 skill 文件。如需使用多执行器功能，依赖项（PAL MCP、Gemini CLI、Codex CLI）需另行安装。
+
+#### 方式二：完整安装（推荐）
+
+包含交互式配置向导和自动依赖安装：
+
+```bash
+cd ~/.claude && git clone https://github.com/CoderMageFox/nexus-cli.git skills/nexus-cli && ~/.claude/skills/nexus-cli/install-nexus-skill.sh
+```
+
+✅ **此方式将**：
+- 安装 Nexus skill
+- 检查并安装缺失的依赖项（PAL MCP、Gemini CLI、Codex CLI、jq、uv）
+- 生成自定义 `.nexus-config.yaml` 配置
+- 配置质量门控和执行器偏好
+
+#### 对比
+
+| 功能 | 一行命令安装 | 完整安装 |
+|------|-------------|----------|
+| 速度 | ⚡ 最快 | 🐢 约 2 分钟 |
+| 依赖项 | ❌ 需手动 | ✅ 自动安装 |
+| 配置 | ❌ 仅默认 | ✅ 交互式向导 |
+| 适合 | 快速开始、CI/CD | 首次安装 |
+
+#### AI 助手操作步骤
+
+1. **检查平台**：确认用户使用 macOS（Windows 支持即将推出）
+   ```bash
+   uname -s  # macOS 应返回 "Darwin"
+   ```
+
+2. **选择安装方式**：
+   - 新用户 → 使用**完整安装**（方式二）
+   - 有经验的用户 / 只需要 skill → 使用**一行命令安装**（方式一）
+
+3. **验证安装**：
+   ```bash
+   ls -la ~/.claude/commands/nexus.md  # 安装后应存在此文件
+   ```
+
+4. **检查依赖**（如使用一行命令安装）：
+   ```bash
+   # 可选：安装 PAL MCP 以支持多执行器
+   # 添加到 ~/.claude.json 的 mcpServers 中
+   ```
+
+**安装后**：重启 Claude Code 会话后，`/nexus` 命令即可使用。
 
 ## 使用方法
 
