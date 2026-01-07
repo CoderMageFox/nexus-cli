@@ -185,8 +185,8 @@ install_pal_mcp() {
         # Use jq if available for proper JSON manipulation
         local temp_file=$(mktemp)
         jq '.mcpServers.pal = {
-            "command": "npx",
-            "args": ["-y", "@anthropic/pal-mcp-server@latest"]
+            "command": "uvx",
+            "args": ["--from", "git+https://github.com/BeehiveInnovations/pal-mcp-server.git", "pal-mcp-server"]
         }' "$HOME/.claude.json" > "$temp_file" && mv "$temp_file" "$HOME/.claude.json"
         ok "PAL MCP configured in ~/.claude.json"
     else
@@ -194,8 +194,8 @@ install_pal_mcp() {
         warn "jq not found. Please manually add PAL MCP to ~/.claude.json:"
         echo -e "${DIM}"
         echo '  "pal": {'
-        echo '    "command": "npx",'
-        echo '    "args": ["-y", "@anthropic/pal-mcp-server@latest"]'
+        echo '    "command": "uvx",'
+        echo '    "args": ["--from", "git+https://github.com/BeehiveInnovations/pal-mcp-server.git", "pal-mcp-server"]'
         echo '  }'
         echo -e "${NC}"
         return 1

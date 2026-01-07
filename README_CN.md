@@ -56,8 +56,8 @@ cd nexus-cli
 {
   "mcpServers": {
     "pal": {
-      "command": "npx",
-      "args": ["-y", "pal-mcp-server"],
+      "command": "uvx",
+      "args": ["--from", "git+https://github.com/BeehiveInnovations/pal-mcp-server.git", "pal-mcp-server"],
       "env": {
         "GEMINI_API_KEY": "your-gemini-api-key"
       }
