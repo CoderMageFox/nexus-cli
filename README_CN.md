@@ -56,14 +56,32 @@ cd nexus-cli
 {
   "mcpServers": {
     "pal": {
-      "command": "uvx",
-      "args": ["--from", "git+https://github.com/BeehiveInnovations/pal-mcp-server.git", "pal-mcp-server"],
+      "command": "bash",
+      "args": ["-c", "for p in $(which uvx 2>/dev/null) $HOME/.local/bin/uvx $HOME/.cargo/bin/uvx /opt/homebrew/bin/uvx /usr/local/bin/uvx uvx; do [ -x \"$p\" ] && exec \"$p\" --from git+https://github.com/BeehiveInnovations/pal-mcp-server.git pal-mcp-server; done; echo \"uvx not found\" >&2; exit 1"],
       "env": {
         "GEMINI_API_KEY": "your-gemini-api-key"
       }
     }
   }
 }
+```
+
+### 可选：安装 Gemini CLI / Codex CLI
+
+如需通过 PAL `clink` 启用 `gemini` / `codex` 执行器，需要先安装对应 CLI。
+
+**Gemini CLI**（需要 Node.js 20+）：
+```bash
+npm install -g @google/gemini-cli@latest
+# 或（macOS/Linux）
+brew install gemini-cli
+```
+
+**Codex CLI**：
+```bash
+npm install -g @openai/codex
+# 或（macOS）
+brew install --cask codex
 ```
 
 ### AI 助手安装指南
@@ -288,8 +306,9 @@ quality_gates:
 ./install-nexus-skill.sh [选项]
 
 选项:
-  --quick         跳过依赖检查
-  --check-deps    仅检查依赖，不安装
+  --quick         跳过交互式配置（使用默认值）
+  --config-only   仅生成配置文件，不安装 skill
+  --check-deps    检查依赖并提示安装缺失项
   --help          显示帮助信息
 ```
 
