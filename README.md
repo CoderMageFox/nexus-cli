@@ -56,14 +56,32 @@ To enable multi-executor routing, add PAL MCP to `~/.claude.json`:
 {
   "mcpServers": {
     "pal": {
-      "command": "uvx",
-      "args": ["--from", "git+https://github.com/BeehiveInnovations/pal-mcp-server.git", "pal-mcp-server"],
+      "command": "bash",
+      "args": ["-c", "for p in $(which uvx 2>/dev/null) $HOME/.local/bin/uvx $HOME/.cargo/bin/uvx /opt/homebrew/bin/uvx /usr/local/bin/uvx uvx; do [ -x \"$p\" ] && exec \"$p\" --from git+https://github.com/BeehiveInnovations/pal-mcp-server.git pal-mcp-server; done; echo \"uvx not found\" >&2; exit 1"],
       "env": {
         "GEMINI_API_KEY": "your-gemini-api-key"
       }
     }
   }
 }
+```
+
+### Optional: Install Gemini CLI / Codex CLI
+
+These CLIs are required if you enable the `gemini` / `codex` executors via PAL `clink`.
+
+**Gemini CLI** (requires Node.js 20+):
+```bash
+npm install -g @google/gemini-cli@latest
+# or (macOS/Linux)
+brew install gemini-cli
+```
+
+**Codex CLI**:
+```bash
+npm install -g @openai/codex
+# or (macOS)
+brew install --cask codex
 ```
 
 ### Installation Guide for AI Assistants
@@ -288,8 +306,9 @@ quality_gates:
 ./install-nexus-skill.sh [options]
 
 Options:
-  --quick         Skip dependency checks
-  --check-deps    Only check dependencies, don't install
+  --quick         Skip interactive configuration (use defaults)
+  --config-only   Only generate config file, skip skill installation
+  --check-deps    Check dependencies and offer to install missing
   --help          Show help message
 ```
 

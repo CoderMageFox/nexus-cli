@@ -19,11 +19,10 @@
 #   --help           Show this help message
 #
 # Dependencies (auto-detected and installable):
-#   - Node.js & npm    (required)
-#   - Python 3         (required)
-#   - uv               (recommended - Python package manager)
-#   - jq               (recommended - JSON processor)
-#   - PAL MCP Server   (required for Gemini/Codex)
+#   - Node.js 20+ & npm (required for Gemini/Codex CLIs)
+#   - Python 3 & uv/uvx (required for PAL MCP Server)
+#   - jq               (recommended - JSON processor, for auto-config)
+#   - PAL MCP Server   (required for Gemini/Codex via clink; optional otherwise)
 #   - Gemini CLI       (optional - for Gemini executor)
 #   - Codex CLI        (optional - for Codex executor)
 #
@@ -167,10 +166,10 @@ check_node() {
 install_pal_mcp() {
     echo -e "\n${BOLD}Installing PAL MCP Server...${NC}"
 
-    if ! check_npm; then
-        warn "npm not found. Please install Node.js first."
-        echo -e "  ${DIM}brew install node${NC}  (macOS)"
-        echo -e "  ${DIM}sudo apt install nodejs npm${NC}  (Ubuntu/Debian)"
+    if ! check_uv; then
+        warn "uv (uvx) not found. Please install uv first."
+        echo -e "  ${DIM}brew install uv${NC}  (macOS)"
+        echo -e "  ${DIM}curl -LsSf https://astral.sh/uv/install.sh | sh${NC}  (macOS/Linux)"
         return 1
     fi
 
@@ -187,8 +186,8 @@ install_pal_mcp() {
         info "Configuring PAL MCP Server in ~/.claude.json"
         local temp_file=$(mktemp)
         jq '.mcpServers.pal = {
-            "command": "uvx",
-            "args": ["--from", "git+https://github.com/BeehiveInnovations/pal-mcp-server.git", "pal-mcp-server"]
+            "command": "bash",
+            "args": ["-c", "for p in $(which uvx 2>/dev/null) $HOME/.local/bin/uvx $HOME/.cargo/bin/uvx /opt/homebrew/bin/uvx /usr/local/bin/uvx uvx; do [ -x \"$p\" ] && exec \"$p\" --from git+https://github.com/BeehiveInnovations/pal-mcp-server.git pal-mcp-server; done; echo '\''uvx not found'\'' >&2; exit 1"]
         }' "$HOME/.claude.json" > "$temp_file" && mv "$temp_file" "$HOME/.claude.json"
         ok "PAL MCP configured successfully in ~/.claude.json"
     else
@@ -196,8 +195,8 @@ install_pal_mcp() {
         warn "jq not found. Please manually add PAL MCP to ~/.claude.json:"
         echo -e "${DIM}"
         echo '  "pal": {'
-        echo '    "command": "uvx",'
-        echo '    "args": ["--from", "git+https://github.com/BeehiveInnovations/pal-mcp-server.git", "pal-mcp-server"]'
+        echo '    "command": "bash",'
+        echo '    "args": ["-c", "for p in $(which uvx 2>/dev/null) $HOME/.local/bin/uvx $HOME/.cargo/bin/uvx /opt/homebrew/bin/uvx /usr/local/bin/uvx uvx; do [ -x \\"$p\\" ] && exec \\"$p\\" --from git+https://github.com/BeehiveInnovations/pal-mcp-server.git pal-mcp-server; done; echo \\"uvx not found\\" >&2; exit 1"]'
         echo '  }'
         echo -e "${NC}"
         return 1
@@ -209,29 +208,45 @@ install_pal_mcp() {
 install_gemini() {
     echo -e "\n${BOLD}Installing Gemini CLI...${NC}"
 
+    if ! check_node; then
+        warn "Node.js not found. Gemini CLI requires Node.js 20+."
+        echo -e "  ${DIM}brew install node${NC}  (macOS)"
+        echo -e "  ${DIM}sudo apt install nodejs npm${NC}  (Ubuntu/Debian)"
+        return 1
+    fi
+
     if ! check_npm; then
         warn "npm not found. Please install Node.js first."
         return 1
     fi
 
-    info "Running: npm install -g @google/gemini-cli"
-    npm install -g @google/gemini-cli 2>/dev/null
+    local node_ver node_major
+    node_ver=$(node --version 2>/dev/null | sed 's/^v//')
+    node_major=${node_ver%%.*}
+    if [[ "$node_major" =~ ^[0-9]+$ ]] && [ "$node_major" -lt 20 ]; then
+        warn "Node.js v${node_ver} detected. Gemini CLI requires Node.js 20+."
+        echo -e "  ${DIM}Upgrade Node.js and re-run this step:${NC}"
+        echo -e "  ${DIM}  brew install node${NC}  (macOS)"
+        echo -e "  ${DIM}  nvm install 20 && nvm use 20${NC}  (if using nvm)"
+        return 1
+    fi
+
+    info "Running: npm install -g @google/gemini-cli@latest"
+    npm install -g @google/gemini-cli@latest 2>/dev/null || npm install -g @google/gemini-cli 2>/dev/null || true
+
+    # Ensure npm global bin is on PATH for this script session
+    local npm_bin
+    npm_bin=$(npm bin -g 2>/dev/null || true)
+    [ -n "$npm_bin" ] && export PATH="$npm_bin:$PATH"
     if check_gemini; then
         ok "Gemini CLI installed successfully via npm"
         return 0
     else
-        # Try alternative installation
-        info "Trying alternative installation method..."
-        if check_uv; then
-            info "Running: uv tool install gemini-cli"
-            uv tool install gemini-cli 2>/dev/null
-            if check_gemini; then
-                ok "Gemini CLI installed successfully via uv"
-                return 0
-            fi
-        fi
         warn "Could not install Gemini CLI automatically"
-        echo -e "  ${DIM}Manual installation: npm install -g @google/gemini-cli${NC}"
+        echo -e "  ${DIM}Manual installation:${NC}"
+        echo -e "  ${DIM}  npm install -g @google/gemini-cli@latest${NC}"
+        echo -e "  ${DIM}  brew install gemini-cli${NC}  (macOS/Linux, if Homebrew installed)"
+        echo -e "  ${DIM}  npx https://github.com/google-gemini/gemini-cli${NC}  (run without install)"
         return 1
     fi
 }
@@ -240,26 +255,33 @@ install_gemini() {
 install_codex() {
     echo -e "\n${BOLD}Installing Codex CLI...${NC}"
 
-    if check_uv; then
-        info "Running: uv tool install codex-cli"
-        uv tool install codex-cli 2>/dev/null
-        if check_codex; then
-            ok "Codex CLI installed successfully via uv"
-            return 0
-        fi
-    fi
-
     if check_npm; then
-        info "Running: npm install -g @openai/codex-cli"
-        npm install -g @openai/codex-cli 2>/dev/null || npm install -g codex 2>/dev/null
+        info "Running: npm install -g @openai/codex"
+        npm install -g @openai/codex 2>/dev/null || true
+
+        # Ensure npm global bin is on PATH for this script session
+        local npm_bin
+        npm_bin=$(npm bin -g 2>/dev/null || true)
+        [ -n "$npm_bin" ] && export PATH="$npm_bin:$PATH"
+
         if check_codex; then
             ok "Codex CLI installed successfully via npm"
             return 0
         fi
     fi
 
+    if [[ "$OSTYPE" == "darwin"* ]] && command_exists brew; then
+        brew install --cask codex 2>/dev/null || true
+        if check_codex; then
+            ok "Codex CLI installed via Homebrew"
+            return 0
+        fi
+    fi
+
     warn "Could not install Codex CLI automatically"
-    echo -e "  ${DIM}Manual installation: npm install -g @openai/codex${NC}"
+    echo -e "  ${DIM}Manual installation:${NC}"
+    echo -e "  ${DIM}  npm install -g @openai/codex${NC}"
+    echo -e "  ${DIM}  brew install --cask codex${NC}  (macOS)"
     return 1
 }
 
@@ -344,41 +366,56 @@ run_dependency_checks() {
     echo -e "\n${BOLD}Checking Dependencies${NC}"
     echo ""
 
+    local needs_node="false"
+    local needs_pal="false"
+    if [ "$CFG_GEMINI_ENABLED" = "true" ] || [ "$CFG_CODEX_ENABLED" = "true" ]; then
+        needs_node="true"
+        needs_pal="true"
+    fi
+
     # Core dependencies
-    if check_node; then
-        ok "Node.js: $(node --version)"
+    if [ "$needs_node" = "true" ]; then
+        if check_node; then
+            ok "Node.js: $(node --version)"
+        else
+            warn "Node.js: Not found"
+            MISSING_DEPS+=("nodejs")
+        fi
+
+        if check_npm; then
+            ok "npm: $(npm --version 2>/dev/null)"
+        else
+            warn "npm: Not found"
+            MISSING_DEPS+=("npm")
+        fi
     else
-        warn "Node.js: Not found"
-        MISSING_DEPS+=("nodejs")
+        info "Node.js/npm: Skipped (Gemini/Codex disabled)"
     fi
 
-    if check_npm; then
-        ok "npm: $(npm --version 2>/dev/null)"
-    else
-        warn "npm: Not found"
-        MISSING_DEPS+=("npm")
-    fi
+    if [ "$needs_pal" = "true" ]; then
+        if check_python; then
+            local py_ver=$(python3 --version 2>/dev/null || python --version 2>/dev/null)
+            ok "Python: $py_ver"
+        else
+            warn "Python: Not found"
+            MISSING_DEPS+=("python")
+        fi
 
-    if check_python; then
-        local py_ver=$(python3 --version 2>/dev/null || python --version 2>/dev/null)
-        ok "Python: $py_ver"
-    else
-        warn "Python: Not found"
-        MISSING_DEPS+=("python")
-    fi
+        if check_uv; then
+            ok "uv: $(uv --version 2>/dev/null | head -1)"
+        else
+            warn "uv: Not found (required for PAL MCP via uvx)"
+            MISSING_DEPS+=("uv")
+        fi
 
-    if check_uv; then
-        ok "uv: $(uv --version 2>/dev/null | head -1)"
+        if command_exists jq; then
+            ok "jq: $(jq --version 2>/dev/null)"
+        else
+            warn "jq: Not found (recommended for auto-config)"
+            MISSING_DEPS+=("jq")
+        fi
     else
-        warn "uv: Not found (recommended for Python tools)"
-        MISSING_DEPS+=("uv")
-    fi
-
-    if command_exists jq; then
-        ok "jq: $(jq --version 2>/dev/null)"
-    else
-        warn "jq: Not found (needed for config manipulation)"
-        MISSING_DEPS+=("jq")
+        info "Python/uv/jq: Skipped (PAL not required)"
     fi
 
     echo ""
@@ -387,25 +424,37 @@ run_dependency_checks() {
     echo -e "${BOLD}Nexus CLI Dependencies${NC}"
     echo ""
 
-    if check_pal_mcp; then
-        ok "PAL MCP: Configured"
+    if [ "$needs_pal" = "true" ]; then
+        if check_pal_mcp; then
+            ok "PAL MCP: Configured"
+        else
+            warn "PAL MCP: Not configured (required for Gemini/Codex via clink)"
+            MISSING_DEPS+=("pal-mcp")
+        fi
     else
-        warn "PAL MCP: Not configured"
-        MISSING_DEPS+=("pal-mcp")
+        info "PAL MCP: Skipped (Gemini/Codex disabled)"
     fi
 
-    if check_gemini; then
-        ok "Gemini CLI: Available"
+    if [ "$CFG_GEMINI_ENABLED" = "true" ]; then
+        if check_gemini; then
+            ok "Gemini CLI: Available"
+        else
+            warn "Gemini CLI: Not found"
+            MISSING_DEPS+=("gemini")
+        fi
     else
-        warn "Gemini CLI: Not found"
-        MISSING_DEPS+=("gemini")
+        info "Gemini CLI: Skipped (disabled)"
     fi
 
-    if check_codex; then
-        ok "Codex CLI: Available"
+    if [ "$CFG_CODEX_ENABLED" = "true" ]; then
+        if check_codex; then
+            ok "Codex CLI: Available"
+        else
+            warn "Codex CLI: Not found"
+            MISSING_DEPS+=("codex")
+        fi
     else
-        warn "Codex CLI: Not found"
-        MISSING_DEPS+=("codex")
+        info "Codex CLI: Skipped (disabled)"
     fi
 
     echo ""
@@ -424,22 +473,33 @@ install_missing_deps() {
     local install_all=$(ask_yes_no "Would you like to install missing dependencies?" "y")
 
     if [ "$install_all" = "true" ]; then
+        local failed_deps=()
         for dep in "${MISSING_DEPS[@]}"; do
             case $dep in
                 "jq")
-                    install_jq
+                    if ! install_jq; then
+                        failed_deps+=("jq")
+                    fi
                     ;;
                 "uv")
-                    install_uv
+                    if ! install_uv; then
+                        failed_deps+=("uv")
+                    fi
                     ;;
                 "pal-mcp")
-                    install_pal_mcp
+                    if ! install_pal_mcp; then
+                        failed_deps+=("pal-mcp")
+                    fi
                     ;;
                 "gemini")
-                    install_gemini
+                    if ! install_gemini; then
+                        failed_deps+=("gemini")
+                    fi
                     ;;
                 "codex")
-                    install_codex
+                    if ! install_codex; then
+                        failed_deps+=("codex")
+                    fi
                     ;;
                 "nodejs"|"npm")
                     warn "Please install Node.js manually:"
@@ -454,7 +514,12 @@ install_missing_deps() {
             esac
         done
         echo ""
-        ok "Dependency installation complete"
+        if [ ${#failed_deps[@]} -gt 0 ]; then
+            warn "Some dependencies could not be installed automatically: ${failed_deps[*]}"
+            info "You can continue with Claude-only mode or install them manually later."
+        else
+            ok "Dependency installation complete"
+        fi
     else
         info "Skipping dependency installation"
         echo -e "${DIM}You can install them manually later${NC}"
@@ -695,6 +760,21 @@ if [ "$QUICK_MODE" = false ]; then
     if [ "$CFG_CLAUDE_ENABLED" = "false" ] && [ "$CFG_GEMINI_ENABLED" = "false" ] && [ "$CFG_CODEX_ENABLED" = "false" ]; then
         warn "No executors enabled! Enabling Claude as fallback."
         CFG_CLAUDE_ENABLED="true"
+    fi
+
+    # Ensure default executor is enabled
+    if { [ "$CFG_DEFAULT_EXECUTOR" = "claude" ] && [ "$CFG_CLAUDE_ENABLED" = "false" ]; } \
+        || { [ "$CFG_DEFAULT_EXECUTOR" = "gemini" ] && [ "$CFG_GEMINI_ENABLED" = "false" ]; } \
+        || { [ "$CFG_DEFAULT_EXECUTOR" = "codex" ] && [ "$CFG_CODEX_ENABLED" = "false" ]; }; then
+        warn "Default executor '$CFG_DEFAULT_EXECUTOR' is disabled. Selecting a fallback..."
+        if [ "$CFG_CLAUDE_ENABLED" = "true" ]; then
+            CFG_DEFAULT_EXECUTOR="claude"
+        elif [ "$CFG_GEMINI_ENABLED" = "true" ]; then
+            CFG_DEFAULT_EXECUTOR="gemini"
+        else
+            CFG_DEFAULT_EXECUTOR="codex"
+        fi
+        ok "Default executor: $CFG_DEFAULT_EXECUTOR"
     fi
 fi
 
