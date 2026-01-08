@@ -162,6 +162,21 @@ check_node() {
     command_exists node
 }
 
+# Check curl
+check_curl() {
+    command_exists curl
+}
+
+# Check git
+check_git() {
+    command_exists git
+}
+
+# Check uvx (comes with uv)
+check_uvx() {
+    command_exists uvx
+}
+
 # Install PAL MCP Server
 install_pal_mcp() {
     echo -e "\n${BOLD}Installing PAL MCP Server...${NC}"
@@ -366,6 +381,26 @@ run_dependency_checks() {
     echo -e "\n${BOLD}Checking Dependencies${NC}"
     echo ""
 
+    # Basic tools (always required)
+    echo -e "${BOLD}Basic Tools${NC}"
+    echo ""
+
+    if check_curl; then
+        ok "curl: Available"
+    else
+        warn "curl: Not found (required for downloads)"
+        MISSING_DEPS+=("curl")
+    fi
+
+    if check_git; then
+        ok "git: $(git --version 2>/dev/null | head -1)"
+    else
+        warn "git: Not found (required for PAL MCP)"
+        MISSING_DEPS+=("git")
+    fi
+
+    echo ""
+
     local needs_node="false"
     local needs_pal="false"
     if [ "$CFG_GEMINI_ENABLED" = "true" ] || [ "$CFG_CODEX_ENABLED" = "true" ]; then
@@ -406,6 +441,13 @@ run_dependency_checks() {
         else
             warn "uv: Not found (required for PAL MCP via uvx)"
             MISSING_DEPS+=("uv")
+        fi
+
+        if check_uvx; then
+            ok "uvx: Available"
+        else
+            warn "uvx: Not found (required for PAL MCP)"
+            MISSING_DEPS+=("uvx")
         fi
 
         if command_exists jq; then

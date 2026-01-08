@@ -24,8 +24,8 @@
 | Platform | Status |
 |----------|--------|
 | **macOS** | ✅ Fully Supported |
-| **Windows** | 🚧 Coming This Week |
-| **Linux** | 🔜 Planned |
+| **Windows** | ✅ Fully Supported |
+| **Linux** | ✅ Fully Supported |
 
 ## Requirements
 
@@ -33,6 +33,8 @@
 - [PAL MCP Server](https://github.com/BeehiveInnovations/pal-mcp-server) for Gemini/Codex CLI integration (optional, enables multi-executor routing)
 
 ## Installation
+
+### macOS / Linux
 
 ```bash
 # Clone the repository
@@ -42,6 +44,22 @@ cd nexus-cli
 # Run the installer
 ./install-nexus-skill.sh
 ```
+
+### Windows (PowerShell)
+
+```powershell
+# Clone the repository
+git clone https://github.com/CoderMageFox/nexus-cli.git
+cd nexus-cli
+
+# Run the installer
+.\install-nexus-skill.ps1
+```
+
+**Windows Options:**
+- `.\install-nexus-skill.ps1 -Quick` - Skip interactive configuration
+- `.\install-nexus-skill.ps1 -CheckDeps` - Check dependencies only
+- `.\install-nexus-skill.ps1 -Help` - Show help
 
 The installer will:
 1. Register Nexus as a Claude Code skill at `~/.claude/commands/nexus.md`
