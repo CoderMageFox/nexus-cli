@@ -18,6 +18,7 @@
 - **批次执行**：原子任务分解（每个 ≤5 分钟）支持并行执行
 - **实时进度**：集成 TodoWrite 实现实时进度跟踪
 - **AI 代码审查**：由 PAL MCP 驱动的智能代码审查
+- **YOLO 模式**：静默执行模式，跳过所有确认步骤，快速开发
 
 ## 平台支持
 
@@ -194,12 +195,22 @@ cd ~/.claude && git clone https://github.com/CoderMageFox/nexus-cli.git skills/n
 # 简单任务跳过规格阶段
 /nexus 创建一个 hello world 函数 --skip-spec
 
+# YOLO 模式 - 静默执行，跳过所有确认
+/nexus 构建一个登录页面 --yolo
+
 # 前端任务（路由到 Gemini）
 /nexus 构建一个响应式登录表单组件
 
 # 后端任务（路由到 Codex）
 /nexus 实现用户管理的 REST API 端点
 ```
+
+### 命令参数
+
+| 参数 | 说明 |
+|------|------|
+| `--skip-spec` | 跳过 Spec 流程（需求、设计、任务） |
+| `--yolo` / `--YOLO` | 静默执行模式 - 跳过所有用户确认 |
 
 ## 工作流程
 
