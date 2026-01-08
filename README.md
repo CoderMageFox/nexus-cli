@@ -18,6 +18,7 @@
 - **Batch Execution**: Atomic task decomposition (≤5 min each) with parallel execution
 - **Real-time Progress**: TodoWrite integration for live progress tracking
 - **AI Code Review**: Intelligent code review powered by PAL MCP
+- **YOLO Mode**: Silent execution mode that skips all confirmations for rapid development
 
 ## Platform Support
 
@@ -194,12 +195,22 @@ In Claude Code, invoke Nexus with:
 # Skip spec phase for simple tasks
 /nexus Create a hello world function --skip-spec
 
+# YOLO mode - silent execution, skip all confirmations
+/nexus Build a login page --yolo
+
 # Frontend task (routes to Gemini)
 /nexus Build a responsive login form component
 
 # Backend task (routes to Codex)
 /nexus Implement REST API endpoints for user management
 ```
+
+### Command Flags
+
+| Flag | Description |
+|------|-------------|
+| `--skip-spec` | Skip the Spec flow (requirements, design, tasks) |
+| `--yolo` / `--YOLO` | Silent execution mode - skip all user confirmations |
 
 ## Workflow
 
