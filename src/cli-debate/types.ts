@@ -30,7 +30,25 @@ export enum DebatePhase {
   /** 辩论回合 */
   ROUND = 'round',
   /** 最终裁决 */
-  FINAL = 'final'
+  FINAL = 'final',
+  /** 构建检查 */
+  BUILD_CHECK = 'build_check',
+  /** 代码分析 */
+  CODE_ANALYSIS = 'code_analysis',
+  /** 问题辩护 */
+  ISSUE_DEFENSE = 'issue_defense',
+  /** 裁决分配 */
+  VERDICT_ASSIGNMENT = 'verdict_assignment',
+  /** 并行修复 */
+  PARALLEL_FIX = 'parallel_fix'
+}
+
+/** 辩论模式 */
+export enum DebateMode {
+  /** 标准辩论 */
+  STANDARD = 'standard',
+  /** 代码审查 */
+  CODE_REVIEW = 'code_review'
 }
 
 /** 辩论状态 */
@@ -195,4 +213,128 @@ export interface ICLIAgent {
   execute(options: AgentExecuteOptions): Promise<AgentExecuteResult>;
   /** 检查是否可用 */
   isAvailable(): Promise<boolean>;
+}
+
+// ============ 代码审查类型 ============
+
+/** 问题严重程度 */
+export enum IssueSeverity {
+  CRITICAL = 'critical',
+  HIGH = 'high',
+  MEDIUM = 'medium',
+  LOW = 'low'
+}
+
+/** 问题类型 */
+export enum IssueType {
+  BUG = 'bug',
+  SECURITY = 'security',
+  PERFORMANCE = 'performance',
+  DESIGN = 'design'
+}
+
+/** 代码问题 */
+export interface CodeIssue {
+  /** 问题ID */
+  id: string;
+  /** 问题类型 */
+  type: IssueType;
+  /** 严重程度 */
+  severity: IssueSeverity;
+  /** 问题描述 */
+  description: string;
+  /** 文件路径 */
+  filePath?: string;
+  /** 行号 */
+  lineNumber?: number;
+  /** 建议修复方案 */
+  suggestedFix?: string;
+  /** 分配给哪个 CLI 修复 */
+  assignedTo?: CLIType;
+  /** 是否已修复 */
+  fixed?: boolean;
+  /** 修复结果 */
+  fixResult?: string;
+}
+
+/** 构建检查结果 */
+export interface BuildCheckResult {
+  /** 是否成功 */
+  success: boolean;
+  /** 构建命令 */
+  command: string;
+  /** 输出内容 */
+  output: string;
+  /** 错误信息 */
+  errors?: string[];
+  /** 耗时 */
+  duration: number;
+}
+
+/** 代码审查配置 */
+export interface CodeReviewConfig {
+  /** 代码路径 */
+  path: string;
+  /** 审查焦点 */
+  focus?: IssueType[];
+  /** 构建命令 */
+  buildCommand?: string;
+  /** 是否自动修复 */
+  autoFix?: boolean;
+  /** 挑战者 CLI */
+  challenger: AgentConfig;
+  /** 辩护者 CLI */
+  defender: AgentConfig;
+  /** 主持人 CLI */
+  moderator: AgentConfig;
+  /** 修复者 CLI 列表 */
+  fixers?: AgentConfig[];
+  /** 是否启用流式输出 */
+  streaming?: boolean;
+  /** 全局超时 */
+  globalTimeout?: number;
+}
+
+/** 修复任务 */
+export interface FixTask {
+  /** 任务ID */
+  id: string;
+  /** 关联的问题 */
+  issue: CodeIssue;
+  /** 分配的 CLI */
+  assignedCLI: CLIType;
+  /** 状态 */
+  status: 'pending' | 'in_progress' | 'completed' | 'failed';
+  /** 修复结果 */
+  result?: string;
+  /** 耗时 */
+  duration?: number;
+}
+
+/** 代码审查结果 */
+export interface CodeReviewResult {
+  /** 审查ID */
+  id: string;
+  /** 代码路径 */
+  path: string;
+  /** 状态 */
+  status: DebateStatus;
+  /** 构建检查结果 */
+  buildCheck?: BuildCheckResult;
+  /** 发现的问题 */
+  issues: CodeIssue[];
+  /** 辩护回应 */
+  defenseResponses?: DebateMessage[];
+  /** 最终裁决 */
+  verdict?: DebateMessage;
+  /** 修复任务 */
+  fixTasks?: FixTask[];
+  /** 开始时间 */
+  startTime: Date;
+  /** 结束时间 */
+  endTime?: Date;
+  /** 总耗时 */
+  totalDuration?: number;
+  /** 错误信息 */
+  error?: string;
 }

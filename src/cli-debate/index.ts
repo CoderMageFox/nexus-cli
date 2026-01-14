@@ -16,3 +16,4 @@ export { GeminiAgent } from './agents/gemini-agent';
 
 // 编排器导出
 export { DebateOrchestrator } from './orchestrator';
+export { CodeReviewOrchestrator } from './code-review';

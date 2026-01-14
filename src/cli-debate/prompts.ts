@@ -4,7 +4,7 @@
  * 为不同角色提供专业的提示词模板
  */
 
-import { DebateRole, DebateMessage } from './types';
+import { DebateRole, DebateMessage, CodeIssue, IssueType } from './types';
 
 /** 格式化对话历史 */
 function formatHistory(messages: DebateMessage[]): string {
@@ -175,4 +175,206 @@ ${formatHistory(history)}
 - 保持逻辑清晰，论据充分
 - 态度专业且有说服力
 - 控制在 200-300 字`;
+}
+
+// ============ 代码审查 Prompts ============
+
+/** 格式化问题类型 */
+function formatIssueType(type: IssueType): string {
+  switch (type) {
+    case IssueType.BUG:
+      return 'Bug';
+    case IssueType.SECURITY:
+      return '安全问题';
+    case IssueType.PERFORMANCE:
+      return '性能问题';
+    case IssueType.DESIGN:
+      return '设计问题';
+  }
+}
+
+/** 格式化问题列表 */
+function formatIssues(issues: CodeIssue[]): string {
+  if (!issues.length) return '无';
+  return issues
+    .map((issue, i) => {
+      const location = issue.filePath
+        ? `${issue.filePath}${issue.lineNumber ? `:${issue.lineNumber}` : ''}`
+        : '未指定位置';
+      return `${i + 1}. [${formatIssueType(issue.type)}][${issue.severity}] ${issue.description}\n   位置: ${location}`;
+    })
+    .join('\n\n');
+}
+
+/** 代码审查挑战者 Prompt - 分析代码问题 */
+export function getCodeReviewChallengerPrompt(
+  codePath: string,
+  focus?: IssueType[]
+): string {
+  const focusText = focus?.length
+    ? `重点关注: ${focus.map(formatIssueType).join('、')}`
+    : '全面审查所有类型的问题';
+
+  return `你是一位严格的代码审查专家，负责挑战和质疑代码质量。
+
+## 审查目标
+代码路径: ${codePath}
+
+## 审查焦点
+${focusText}
+
+## 你的任务
+作为代码审查挑战者，请仔细分析代码并找出问题：
+
+1. **Bug 问题**: 逻辑错误、边界条件、空指针、类型错误等
+2. **安全问题**: 注入漏洞、认证缺陷、敏感数据泄露、权限问题等
+3. **性能问题**: 算法复杂度、内存泄漏、不必要的计算、N+1 查询等
+4. **设计问题**: 违反 SOLID 原则、代码重复、耦合过高、可维护性差等
+
+## 输出格式
+请以 JSON 格式输出发现的问题列表：
+\`\`\`json
+{
+  "issues": [
+    {
+      "type": "bug|security|performance|design",
+      "severity": "critical|high|medium|low",
+      "description": "问题描述",
+      "filePath": "文件路径",
+      "lineNumber": 行号（可选）,
+      "suggestedFix": "建议的修复方案"
+    }
+  ]
+}
+\`\`\`
+
+## 要求
+- 使用中文描述问题
+- 每个问题都要有具体的位置和修复建议
+- 按严重程度排序（critical > high > medium > low）
+- 保持客观专业，有理有据`;
+}
+
+/** 代码审查辩护者 Prompt - 回应质疑 */
+export function getCodeReviewDefenderPrompt(
+  codePath: string,
+  issues: CodeIssue[]
+): string {
+  return `你是代码的辩护者，负责回应审查者提出的问题。
+
+## 代码路径
+${codePath}
+
+## 被质疑的问题
+${formatIssues(issues)}
+
+## 你的任务
+作为代码辩护者，请逐一回应上述问题：
+
+1. **承认有效问题**: 如果问题确实存在且需要修复，承认并说明
+2. **辩护误判问题**: 如果问题是误判或有特殊原因，提供解释
+3. **补充上下文**: 提供可能被忽略的业务背景或技术约束
+4. **评估优先级**: 对每个问题给出你认为的实际优先级
+
+## 输出格式
+请以 JSON 格式输出回应：
+\`\`\`json
+{
+  "responses": [
+    {
+      "issueId": "问题ID",
+      "accepted": true/false,
+      "response": "回应内容",
+      "actualSeverity": "你认为的实际严重程度",
+      "reason": "调整严重程度的原因（如有）"
+    }
+  ]
+}
+\`\`\`
+
+## 要求
+- 使用中文
+- 保持专业客观
+- 不要无理辩护，承认真正的问题
+- 提供有价值的上下文信息`;
+}
+
+/** 代码审查主持人裁决 Prompt */
+export function getCodeReviewVerdictPrompt(
+  codePath: string,
+  issues: CodeIssue[],
+  defenseResponse: string
+): string {
+  return `你是代码审查的主持人，负责做出最终裁决。
+
+## 代码路径
+${codePath}
+
+## 挑战者发现的问题
+${formatIssues(issues)}
+
+## 辩护者的回应
+${defenseResponse}
+
+## 你的任务
+作为主持人，请做出最终裁决：
+
+1. **评估每个问题**: 综合挑战者和辩护者的观点
+2. **确定需修复问题**: 哪些问题确实需要修复
+3. **分配修复任务**: 根据问题类型分配给合适的 CLI
+
+## 输出格式
+请以 JSON 格式输出裁决：
+\`\`\`json
+{
+  "verdict": "总体评价",
+  "confirmedIssues": [
+    {
+      "issueId": "问题ID",
+      "confirmed": true/false,
+      "priority": "high|medium|low",
+      "assignTo": "claude|codex|gemini",
+      "reason": "分配原因"
+    }
+  ],
+  "summary": "总结说明"
+}
+\`\`\`
+
+## CLI 分配建议
+- **claude**: 复杂逻辑、架构设计、安全问题
+- **codex**: 后端代码、数据库、API 相关
+- **gemini**: 前端代码、UI 组件、算法优化
+
+## 要求
+- 使用中文
+- 公正客观地评估
+- 合理分配修复任务`;
+}
+
+/** 修复任务 Prompt */
+export function getFixTaskPrompt(issue: CodeIssue, codePath: string): string {
+  return `你需要修复以下代码问题。
+
+## 代码路径
+${codePath}
+
+## 问题详情
+- **类型**: ${formatIssueType(issue.type)}
+- **严重程度**: ${issue.severity}
+- **描述**: ${issue.description}
+- **位置**: ${issue.filePath || '未指定'}${issue.lineNumber ? `:${issue.lineNumber}` : ''}
+- **建议修复**: ${issue.suggestedFix || '无'}
+
+## 你的任务
+1. 定位问题代码
+2. 分析问题根因
+3. 实施修复
+4. 验证修复有效
+
+## 输出要求
+- 说明你的修复方案
+- 展示修改的代码
+- 解释为什么这样修复
+- 使用中文`;
 }
