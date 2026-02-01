@@ -52,6 +52,11 @@ PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 COMMANDS_DIR="$HOME/.claude/commands"
 CONFIG_OUTPUT=""
 
+# OpenCode support
+OPENCODE_SKILLS_DIR="$HOME/.config/opencode/skills/nexus-cli"
+CLAUDE_SKILLS_DIR="$HOME/.claude/skills/nexus-cli"
+INSTALL_TARGET="auto"  # auto, claude, opencode, both
+
 # Read version
 if [ -f "$PROJECT_DIR/VERSION" ]; then
     VERSION=$(cat "$PROJECT_DIR/VERSION" | tr -d '\n')
@@ -140,6 +145,36 @@ check_gemini() {
 # Check Codex CLI
 check_codex() {
     command_exists codex
+}
+
+check_opencode() {
+    command_exists opencode
+}
+
+check_claude_code() {
+    [ -d "$HOME/.claude" ]
+}
+
+detect_install_target() {
+    local has_claude=false
+    local has_opencode=false
+    
+    check_claude_code && has_claude=true
+    check_opencode && has_opencode=true
+    
+    if [ "$has_claude" = true ] && [ "$has_opencode" = true ]; then
+        echo "both"
+    elif [ "$has_opencode" = true ]; then
+        echo "opencode"
+    elif [ "$has_claude" = true ]; then
+        echo "claude"
+    else
+        echo "none"
+    fi
+}
+
+check_ralph() {
+    command_exists ralph
 }
 
 # Check Python
@@ -297,6 +332,41 @@ install_codex() {
     echo -e "  ${DIM}Manual installation:${NC}"
     echo -e "  ${DIM}  npm install -g @openai/codex${NC}"
     echo -e "  ${DIM}  brew install --cask codex${NC}  (macOS)"
+    return 1
+}
+
+install_ralph() {
+    echo -e "\n${BOLD}Installing Ralph Orchestrator...${NC}"
+
+    if check_npm; then
+        info "Running: npm install -g @ralph-orchestrator/ralph-cli"
+        npm install -g @ralph-orchestrator/ralph-cli 2>/dev/null || true
+
+        local npm_bin
+        npm_bin=$(npm bin -g 2>/dev/null || true)
+        [ -n "$npm_bin" ] && export PATH="$npm_bin:$PATH"
+
+        if check_ralph; then
+            ok "Ralph Orchestrator installed successfully via npm"
+            return 0
+        fi
+    fi
+
+    if command_exists cargo; then
+        info "Running: cargo install ralph-cli"
+        cargo install ralph-cli 2>/dev/null || true
+        export PATH="$HOME/.cargo/bin:$PATH"
+
+        if check_ralph; then
+            ok "Ralph Orchestrator installed successfully via cargo"
+            return 0
+        fi
+    fi
+
+    warn "Could not install Ralph Orchestrator automatically"
+    echo -e "  ${DIM}Manual installation:${NC}"
+    echo -e "  ${DIM}  npm install -g @ralph-orchestrator/ralph-cli${NC}"
+    echo -e "  ${DIM}  cargo install ralph-cli${NC}"
     return 1
 }
 
@@ -499,6 +569,13 @@ run_dependency_checks() {
         info "Codex CLI: Skipped (disabled)"
     fi
 
+    if check_ralph; then
+        ok "Ralph Orchestrator: Available"
+    else
+        warn "Ralph Orchestrator: Not found (optional, for Ralph mode)"
+        MISSING_DEPS+=("ralph")
+    fi
+
     echo ""
 }
 
@@ -541,6 +618,11 @@ install_missing_deps() {
                 "codex")
                     if ! install_codex; then
                         failed_deps+=("codex")
+                    fi
+                    ;;
+                "ralph")
+                    if ! install_ralph; then
+                        failed_deps+=("ralph")
                     fi
                     ;;
                 "nodejs"|"npm")
@@ -1186,8 +1268,20 @@ if [ "$CONFIG_ONLY" = false ]; then
     # Check prerequisites
     step "Checking prerequisites"
 
-    [ -d "$HOME/.claude" ] || err "Claude Code not installed. Install it first."
-    ok "Claude Code directory found"
+    # Detect available platforms
+    DETECTED_TARGET=$(detect_install_target)
+    
+    if [ "$DETECTED_TARGET" = "none" ]; then
+        err "Neither Claude Code nor OpenCode found. Install one of them first."
+    fi
+    
+    if [ "$DETECTED_TARGET" = "both" ]; then
+        ok "Both Claude Code and OpenCode detected"
+    elif [ "$DETECTED_TARGET" = "opencode" ]; then
+        ok "OpenCode detected"
+    else
+        ok "Claude Code detected"
+    fi
 
     # Run comprehensive dependency checks
     run_dependency_checks
@@ -1200,22 +1294,49 @@ if [ "$CONFIG_ONLY" = false ]; then
     # Install skill
     step "Installing skill files"
 
-    mkdir -p "$COMMANDS_DIR"
-    ok "Commands directory ready"
-
-    if [ -f "$PROJECT_DIR/commands/nexus.md" ]; then
-        cp "$PROJECT_DIR/commands/nexus.md" "$COMMANDS_DIR/"
-        ok "Installed nexus.md"
-    else
-        err "commands/nexus.md not found"
+    # Install for Claude Code (commands directory)
+    if [ "$DETECTED_TARGET" = "claude" ] || [ "$DETECTED_TARGET" = "both" ]; then
+        mkdir -p "$COMMANDS_DIR"
+        if [ -f "$PROJECT_DIR/commands/nexus.md" ]; then
+            cp "$PROJECT_DIR/commands/nexus.md" "$COMMANDS_DIR/"
+            ok "Installed nexus.md to ~/.claude/commands/"
+        fi
+        
+        # Also install SKILL.md to ~/.claude/skills/ for OpenCode compatibility
+        mkdir -p "$CLAUDE_SKILLS_DIR"
+        if [ -f "$PROJECT_DIR/skills/nexus-cli/SKILL.md" ]; then
+            cp "$PROJECT_DIR/skills/nexus-cli/SKILL.md" "$CLAUDE_SKILLS_DIR/"
+            ok "Installed SKILL.md to ~/.claude/skills/nexus-cli/"
+        fi
+    fi
+    
+    # Install for OpenCode (XDG config directory)
+    if [ "$DETECTED_TARGET" = "opencode" ] || [ "$DETECTED_TARGET" = "both" ]; then
+        mkdir -p "$OPENCODE_SKILLS_DIR"
+        if [ -f "$PROJECT_DIR/skills/nexus-cli/SKILL.md" ]; then
+            cp "$PROJECT_DIR/skills/nexus-cli/SKILL.md" "$OPENCODE_SKILLS_DIR/"
+            ok "Installed SKILL.md to ~/.config/opencode/skills/nexus-cli/"
+        fi
     fi
 
     # Verify
     step "Verifying installation"
 
+    install_success=false
     if [ -f "$COMMANDS_DIR/nexus.md" ]; then
-        ok "nexus.md installed successfully"
-    else
+        ok "Claude Code: nexus.md installed"
+        install_success=true
+    fi
+    if [ -f "$CLAUDE_SKILLS_DIR/SKILL.md" ]; then
+        ok "Claude Code (OpenCode compat): SKILL.md installed"
+        install_success=true
+    fi
+    if [ -f "$OPENCODE_SKILLS_DIR/SKILL.md" ]; then
+        ok "OpenCode: SKILL.md installed"
+        install_success=true
+    fi
+    
+    if [ "$install_success" = false ]; then
         err "Installation failed"
     fi
 fi
@@ -1232,7 +1353,9 @@ echo ""
 
 if [ "$CONFIG_ONLY" = false ]; then
     echo -e "${BOLD}Installed Files:${NC}"
-    echo -e "  ${GREEN}~/.claude/commands/nexus.md${NC} - Skill definition"
+    [ -f "$COMMANDS_DIR/nexus.md" ] && echo -e "  ${GREEN}~/.claude/commands/nexus.md${NC} - Claude Code skill"
+    [ -f "$CLAUDE_SKILLS_DIR/SKILL.md" ] && echo -e "  ${GREEN}~/.claude/skills/nexus-cli/SKILL.md${NC} - OpenCode compatible"
+    [ -f "$OPENCODE_SKILLS_DIR/SKILL.md" ] && echo -e "  ${GREEN}~/.config/opencode/skills/nexus-cli/SKILL.md${NC} - OpenCode skill"
     if [ -f ".nexus-config.yaml" ]; then
         echo -e "  ${GREEN}./.nexus-config.yaml${NC} - Project configuration"
     fi
@@ -1267,12 +1390,12 @@ if [ "$CFG_QG_ENABLED" = "true" ]; then
 fi
 
 echo -e "${BOLD}Usage:${NC}"
-echo -e "  ${GREEN}/sc:nexus${NC} 创建用户登录功能"
-echo -e "  ${GREEN}/sc:nexus --skip-spec${NC} 快速创建按钮组件"
+echo -e "  ${GREEN}/nexus${NC} Create user login feature"
+echo -e "  ${GREEN}/nexus --skip-spec${NC} Quick create button component"
 echo ""
 
 if [ "$CONFIG_ONLY" = false ]; then
-    echo -e "${YELLOW}Restart Claude Code to activate the changes.${NC}"
+    echo -e "${YELLOW}Restart Claude Code / OpenCode to activate the changes.${NC}"
 else
     echo -e "${YELLOW}Run without --config-only to install the skill.${NC}"
 fi
