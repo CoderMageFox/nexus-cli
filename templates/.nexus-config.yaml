@@ -113,6 +113,11 @@ routing:
       timeout_minutes: 15
       max_retries: 2
 
+    opencode:
+      enabled: true
+      timeout_minutes: 15
+      max_retries: 2
+
     gemini:
       enabled: true
       timeout_minutes: 10
