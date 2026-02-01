@@ -129,10 +129,12 @@ command_exists() {
 
 # Check PAL MCP configuration
 check_pal_mcp() {
-    if [ -f "$HOME/.claude.json" ]; then
-        if grep -q '"pal"' "$HOME/.claude.json" 2>/dev/null; then
-            return 0
-        fi
+    if [ -f "$HOME/.claude.json" ] && grep -q '"pal"' "$HOME/.claude.json" 2>/dev/null; then
+        return 0
+    fi
+    local opencode_config="$HOME/.config/opencode/opencode.json"
+    if [ -f "$opencode_config" ] && grep -q '"pal"' "$opencode_config" 2>/dev/null; then
+        return 0
     fi
     return 1
 }
@@ -223,35 +225,61 @@ install_pal_mcp() {
         return 1
     fi
 
-    # Check if ~/.claude.json exists
-    if [ ! -f "$HOME/.claude.json" ]; then
-        info "Creating ~/.claude.json"
-        echo '{"mcpServers":{}}' > "$HOME/.claude.json"
-        ok "Created ~/.claude.json"
+    if ! command_exists jq; then
+        warn "jq not found. Please install jq first."
+        echo -e "  ${DIM}brew install jq${NC}  (macOS)"
+        echo -e "  ${DIM}sudo apt install jq${NC}  (Ubuntu/Debian)"
+        return 1
     fi
 
-    # Add PAL MCP configuration
-    if command_exists jq; then
-        # Use jq if available for proper JSON manipulation
+    local claude_configured=false
+    local opencode_configured=false
+
+    # Configure for Claude Code (~/.claude.json)
+    if [ -f "$HOME/.claude.json" ] || [ "$DETECTED_TARGET" = "claude" ] || [ "$DETECTED_TARGET" = "both" ]; then
+        if [ ! -f "$HOME/.claude.json" ]; then
+            info "Creating ~/.claude.json"
+            echo '{"mcpServers":{}}' > "$HOME/.claude.json"
+            ok "Created ~/.claude.json"
+        fi
+
         info "Configuring PAL MCP Server in ~/.claude.json"
         local temp_file=$(mktemp)
         jq '.mcpServers.pal = {
             "command": "bash",
             "args": ["-c", "for p in $(which uvx 2>/dev/null) $HOME/.local/bin/uvx $HOME/.cargo/bin/uvx /opt/homebrew/bin/uvx /usr/local/bin/uvx uvx; do [ -x \"$p\" ] && exec \"$p\" --from git+https://github.com/BeehiveInnovations/pal-mcp-server.git pal-mcp-server; done; echo '\''uvx not found'\'' >&2; exit 1"]
         }' "$HOME/.claude.json" > "$temp_file" && mv "$temp_file" "$HOME/.claude.json"
-        ok "PAL MCP configured successfully in ~/.claude.json"
+        ok "PAL MCP configured in ~/.claude.json"
+        claude_configured=true
+    fi
+
+    # Configure for OpenCode (~/.config/opencode/opencode.json)
+    local opencode_config="$HOME/.config/opencode/opencode.json"
+    if [ -f "$opencode_config" ] || [ "$DETECTED_TARGET" = "opencode" ] || [ "$DETECTED_TARGET" = "both" ]; then
+        if [ ! -f "$opencode_config" ]; then
+            info "Creating $opencode_config"
+            mkdir -p "$HOME/.config/opencode"
+            echo '{"mcp":{}}' > "$opencode_config"
+            ok "Created $opencode_config"
+        fi
+
+        info "Configuring PAL MCP Server in $opencode_config"
+        local temp_file=$(mktemp)
+        # OpenCode uses different format: "mcp" instead of "mcpServers", and "command" is an array
+        jq '.mcp.pal = {
+            "command": ["bash", "-c", "for p in $(which uvx 2>/dev/null) $HOME/.local/bin/uvx $HOME/.cargo/bin/uvx /opt/homebrew/bin/uvx /usr/local/bin/uvx uvx; do [ -x \"$p\" ] && exec \"$p\" --from git+https://github.com/BeehiveInnovations/pal-mcp-server.git pal-mcp-server; done; echo '\''uvx not found'\'' >&2; exit 1"],
+            "type": "local"
+        }' "$opencode_config" > "$temp_file" && mv "$temp_file" "$opencode_config"
+        ok "PAL MCP configured in $opencode_config"
+        opencode_configured=true
+    fi
+
+    if [ "$claude_configured" = true ] || [ "$opencode_configured" = true ]; then
+        return 0
     else
-        # Manual approach if jq not available
-        warn "jq not found. Please manually add PAL MCP to ~/.claude.json:"
-        echo -e "${DIM}"
-        echo '  "pal": {'
-        echo '    "command": "bash",'
-        echo '    "args": ["-c", "for p in $(which uvx 2>/dev/null) $HOME/.local/bin/uvx $HOME/.cargo/bin/uvx /opt/homebrew/bin/uvx /usr/local/bin/uvx uvx; do [ -x \\"$p\\" ] && exec \\"$p\\" --from git+https://github.com/BeehiveInnovations/pal-mcp-server.git pal-mcp-server; done; echo \\"uvx not found\\" >&2; exit 1"]'
-        echo '  }'
-        echo -e "${NC}"
+        warn "No configuration files found. Please create ~/.claude.json or ~/.config/opencode/opencode.json first."
         return 1
     fi
-    return 0
 }
 
 # Install Gemini CLI
