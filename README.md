@@ -25,12 +25,12 @@
 | Platform | Status |
 |----------|--------|
 | **macOS** | ✅ Fully Supported |
-| **Windows** | 🚧 Coming This Week |
-| **Linux** | 🔜 Planned |
+| **Linux** | ✅ Fully Supported |
+| **Windows** | ❌ Not Supported |
 
 ## Requirements
 
-- [Claude Code](https://claude.ai/code) installed and configured
+- [Claude Code](https://claude.ai/code) or [OpenCode](https://opencode.ai) installed and configured
 - [PAL MCP Server](https://github.com/BeehiveInnovations/pal-mcp-server) for Gemini/Codex CLI integration (optional, enables multi-executor routing)
 
 ## Installation
@@ -45,9 +45,12 @@ cd nexus-cli
 ```
 
 The installer will:
-1. Register Nexus as a Claude Code skill at `~/.claude/commands/nexus.md`
-2. Create default configuration file `.nexus-config.yaml`
-3. Check for optional dependencies (PAL MCP, Gemini CLI, Codex CLI)
+1. Detect Claude Code and/or OpenCode installation
+2. Install skill files to appropriate locations:
+   - Claude Code: `~/.claude/commands/nexus.md`
+   - OpenCode: `~/.config/opencode/skills/nexus-cli/SKILL.md`
+3. Create default configuration file `.nexus-config.yaml`
+4. Check for optional dependencies (PAL MCP, Gemini CLI, Codex CLI, Ralph)
 
 ### PAL MCP Configuration (Optional)
 
@@ -328,7 +331,10 @@ Options:
 ```
 nexus-cli/
 ├── commands/
-│   └── nexus.md           # Main skill definition
+│   └── nexus.md           # Claude Code skill definition
+├── skills/
+│   └── nexus-cli/
+│       └── SKILL.md       # OpenCode skill definition
 ├── lib/                   # Library modules
 ├── locales/               # i18n translations (en-US, zh-CN)
 ├── templates/             # Document templates
