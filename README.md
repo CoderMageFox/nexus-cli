@@ -255,7 +255,6 @@ In Claude Code, invoke Nexus with:
 | Executor | Best For | Icon |
 |----------|----------|------|
 | **Claude** | Architecture design, deep analysis, security review, complex reasoning | 🧠 |
-| **OpenCode** | Same as Claude, for OpenCode environment | 🌐 |
 | **Gemini** | Frontend UI, algorithms, web search, creative tasks | 💎 |
 | **Codex** | Backend APIs, databases, server-side logic | 🔷 |
 
