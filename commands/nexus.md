@@ -99,39 +99,11 @@ YOLO 模式下仍然输出进度信息，但不等待用户输入：
 
 ---
 
-## 🔴 阶段 0: 环境检测与模式选择 (最优先执行)
+## 🔴 阶段 0: PAL MCP 可用性检查 (最优先执行)
 
 **此阶段必须在任何其他操作之前执行！**
 
-### 步骤 0.1: 检测 Ralph Orchestrator
-
-检测 Ralph 是否已安装：
-
-```bash
-which ralph || command -v ralph
-```
-
-**如果 Ralph 可用**，询问用户是否启用 Ralph 模式：
-
-```
-AskUserQuestion({
-  questions: [{
-    header: "执行模式选择",
-    question: "检测到 Ralph Orchestrator 已安装。Ralph 模式可实现自主迭代执行直到任务完成。请选择执行模式：",
-    options: [
-      {label: "普通模式", description: "使用 Nexus 标准流程，手动控制每个阶段"},
-      {label: "Ralph 模式", description: "启用自主迭代循环，AI 持续执行直到完成（预估成本较高）"}
-    ],
-    multiSelect: false
-  }]
-})
-```
-
-**处理逻辑**:
-- 如果用户选择"Ralph 模式" → 设置 `RALPH_MODE = true`，跳转到 Ralph 执行流程
-- 如果用户选择"普通模式" → 设置 `RALPH_MODE = false`，继续步骤 0.2
-
-### 步骤 0.2: 检测 PAL MCP
+### 步骤 0.1: 检测 PAL MCP
 
 通过尝试调用 `mcp__pal__listmodels` 检测 PAL MCP 是否可用：
 
@@ -142,7 +114,7 @@ AskUserQuestion({
 如果失败/超时/工具不存在 → PAL MCP 不可用，设置 PAL_AVAILABLE = false
 ```
 
-### 步骤 0.3: 处理 PAL 不可用情况
+### 步骤 0.2: 处理不可用情况
 
 **如果 PAL MCP 不可用**：
 
@@ -171,7 +143,7 @@ AskUserQuestion({
 - 如果用户选择"降级到 Claude 模式" → 设置 `CLAUDE_ONLY_MODE = true`，继续执行
 - 如果用户选择"取消执行" → 输出配置指南并终止
 
-### 步骤 0.4: Claude-Only 模式影响
+### 步骤 0.3: Claude-Only 模式影响
 
 当 `CLAUDE_ONLY_MODE = true` 时：
 
@@ -180,7 +152,6 @@ AskUserQuestion({
 | 🧠 Claude | 🧠 Claude | Task tool (subagent) |
 | 💎 Gemini | 🧠 Claude | Task tool (subagent) |
 | 🔷 Codex | 🧠 Claude | Task tool (subagent) |
-| 🌐 OpenCode | 🧠 Claude | Task tool (subagent) |
 
 **子代理类型映射**:
 - 原 Gemini (前端) → `frontend-architect` 或 `general-purpose`
@@ -209,51 +180,6 @@ PAL MCP 配置指南：
 
 ---
 
-## 🔵 Ralph 模式执行流程
-
-**当 `RALPH_MODE = true` 时，跳过标准 Nexus 流程，使用 Ralph Orchestrator 执行。**
-
-### Ralph 模式配置
-
-```yaml
-# ralph.yml 自动生成配置
-event_loop:
-  completion_promise: LOOP_COMPLETE
-  max_iterations: 30
-  max_runtime_seconds: 1800
-cli:
-  backend: auto  # 自动检测可用后端
-```
-
-### Ralph 后端自动选择
-
-| 检测顺序 | 后端 | 命令 |
-|---------|------|------|
-| 1 | Claude | `claude --dangerously-skip-permissions` |
-| 2 | OpenCode | `opencode` |
-| 3 | Gemini | `gemini --yolo` |
-| 4 | Codex | `codex exec --full-auto` |
-
-### Ralph 模式执行
-
-```bash
-ralph run -p "{{prompt}}" --max-iterations 30
-```
-
-**Ralph 模式特点**:
-- 自主迭代直到任务完成或达到限制
-- 自动选择最优后端
-- 内置安全机制（迭代限制、成本限制、时间限制）
-- 适合明确定义的任务
-
-**退出 Ralph 模式条件**:
-- AI 输出 `LOOP_COMPLETE` 标记
-- 达到最大迭代次数
-- 达到运行时间限制
-- 连续失败超过 5 次
-
----
-
 ### 🔴 工具调用强制映射
 
 **绝对禁止混用工具！执行器与工具的映射关系如下：**
@@ -263,7 +189,6 @@ ralph run -p "{{prompt}}" --max-iterations 30
 | 🧠 Claude | `Task` tool (subagent) | - |
 | 💎 Gemini | `mcp__pal__clink` (`cli_name: "gemini"`) | ❌ Task tool |
 | 🔷 Codex | `mcp__pal__clink` (`cli_name: "codex"`) | ❌ Task tool |
-| 🌐 OpenCode | `Task` tool (subagent) | - |
 
 **正确调用示例**：
 ```
@@ -279,12 +204,6 @@ mcp__pal__clink({
   "cli_name": "gemini"
 })
 
-// ✅ 正确：OpenCode 任务使用 Task tool
-Task({
-  "prompt": "重构代码结构",
-  "subagent_type": "general"
-})
-
 // ❌ 错误：Codex 任务使用 Task tool（这会用 Claude 执行！）
 Task({
   "prompt": "实现用户登录 API",
@@ -292,7 +211,7 @@ Task({
 })
 ```
 
-**违规检测**：如果你发现自己在 Gemini/Codex 任务中调用了 `Task` tool，**立即停止**并改用 `mcp__pal__clink`！（注意：OpenCode 和 Claude 使用 Task tool 是正确的）
+**违规检测**：如果你发现自己在 Gemini/Codex 任务中调用了 `Task` tool，**立即停止**并改用 `mcp__pal__clink`！
 
 ---
 
@@ -300,34 +219,46 @@ Task({
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│            前置: YOLO 模式检测 (最优先，可选)               │
+│              阶段 -1: YOLO 模式检测 (最优先)                  │
 ├─────────────────────────────────────────────────────────────┤
 │  检测 --yolo/--YOLO 标志 → 设置 YOLO_MODE = true/false      │
 │  YOLO 模式: 跳过所有用户确认，自动选择推荐选项              │
 └─────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────┐
-│          阶段 0: 环境检测与模式选择 (最优先)                │
+│              阶段 0: PAL MCP 可用性检查 (最优先)              │
 ├─────────────────────────────────────────────────────────────┤
-│  步骤 0.1: 检测 Ralph → 可用时询问是否启用 Ralph 模式        │
-│  ├─ Ralph 模式 → 跳转到 Ralph 执行流程                      │
-│  └─ 普通模式 → 继续步骤 0.2                                 │
-│  步骤 0.2: 检测 PAL MCP → 可用/不可用                       │
+│  检测 PAL MCP → 可用: 正常模式 / 不可用: 询问降级            │
 │  ├─ [YOLO] 不可用时自动降级到 Claude 模式                   │
 │  ├─ [正常] 降级到 Claude 模式 → CLAUDE_ONLY_MODE = true     │
 │  └─ [正常] 取消执行 → 显示配置指南并终止                    │
 └─────────────────────────────────────────────────────────────┘
-           ↓ (普通模式)                    ↓ (Ralph 模式)
-┌──────────────────────────┐    ┌──────────────────────────────┐
-│    SPEC 流程 (阶段 1-3)   │    │     Ralph 自主执行流程        │
-│  需求 → 设计 → 实施计划   │    │  ralph run -p "任务"          │
-└──────────────────────────┘    │  自动迭代直到 LOOP_COMPLETE   │
-           ↓                    └──────────────────────────────┘
-┌──────────────────────────┐
-│  NEXUS 执行流程 (阶段 4-5) │
-│  批次执行 + TodoWrite     │
-└──────────────────────────┘
-           ↓
+                              ↓
+┌─────────────────────────────────────────────────────────────┐
+│                    SPEC 流程 (阶段 1 到 3)                    │
+├─────────────────────────────────────────────────────────────┤
+│  阶段 1: 需求收集 → requirements.md → [YOLO:跳过/正常:确认]  │
+│  阶段 2: 设计文档 → design.md → [YOLO:跳过/正常:确认]        │
+│  阶段 3: 实施计划 → tasks.md (批次格式) → [YOLO:跳过/正常:确认]│
+└─────────────────────────────────────────────────────────────┘
+                              ↓
+┌─────────────────────────────────────────────────────────────┐
+│                   NEXUS 执行流程 (阶段 4 到 5)                │
+├─────────────────────────────────────────────────────────────┤
+│  阶段 4: TodoWrite 初始化 + [YOLO:跳过/正常:确认执行器]      │
+│  阶段 5: 批次执行循环                                        │
+│         ┌─────────────────────────────────────────┐          │
+│         │  For each 批次:                         │          │
+│         │    ├─ 并行执行批次内所有任务            │          │
+│         │    │   ├─ Claude → Task tool            │          │
+│         │    │   └─ Gemini/Codex → PAL clink      │          │
+│         │    │      (CLAUDE_ONLY: 全部 Task tool) │          │
+│         │    ├─ 等待批次完成                      │          │
+│         │    ├─ 立即更新 TodoWrite ✅              │          │
+│         │    └─ [per_batch 策略] 质量门控检查      │          │
+│         └─────────────────────────────────────────┘          │
+└─────────────────────────────────────────────────────────────┘
+                              ↓
 ┌─────────────────────────────────────────────────────────────┐
 │              质量门控阶段 (阶段 6 - 可配置)                   │
 ├─────────────────────────────────────────────────────────────┤
@@ -1205,12 +1136,6 @@ const advancedResult = functionName(param, options);
 - ✅ 数据库 schema 设计
 - ✅ 后端服务逻辑
 - ✅ 第三方服务集成
-
-**🌐 OpenCode** (通用/开源优先):
-- ✅ 通用代码生成和修改
-- ✅ 跨领域任务
-- ✅ 开源项目贡献
-- ✅ Claude Code 的开源替代
 
 ---
 

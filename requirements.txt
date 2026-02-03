@@ -1,5 +1,0 @@
-# Nexus CLI Python Dependencies
-# Install with: pip install -r requirements.txt
-
-# YAML parsing for configuration files
-pyyaml>=6.0

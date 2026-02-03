@@ -92,12 +92,6 @@ routing:
       max_retries: 3
       role: default
 
-    opencode:
-      enabled: true
-      timeout_minutes: 10
-      max_retries: 3
-      tool: task
-
 # ─────────────────────────────────────────────────────────────────────────────
 # Execution Configuration
 # ─────────────────────────────────────────────────────────────────────────────
@@ -156,14 +150,4 @@ quality_gates:
       thinking_mode: medium
 
   log_gate_results: true
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Ralph Mode Configuration
-# ─────────────────────────────────────────────────────────────────────────────
-ralph:
-  enabled: true
-  max_iterations: 30
-  max_runtime_seconds: 1800
-  backend: auto
-  completion_promise: LOOP_COMPLETE
 
