@@ -25,12 +25,12 @@
 | 平台 | 状态 |
 |------|------|
 | **macOS** | ✅ 完全支持 |
-| **Linux** | ✅ 完全支持 |
-| **Windows** | ❌ 不支持 |
+| **Windows** | 🚧 本周内支持 |
+| **Linux** | 🔜 计划中 |
 
 ## 环境要求
 
-- [Claude Code](https://claude.ai/code) 或 [OpenCode](https://opencode.ai) 已安装并配置
+- [Claude Code](https://claude.ai/code) 已安装并配置
 - [PAL MCP Server](https://github.com/BeehiveInnovations/pal-mcp-server) 用于 Gemini/Codex CLI 集成（可选，启用多执行器路由）
 
 ## 安装
@@ -45,12 +45,9 @@ cd nexus-cli
 ```
 
 安装脚本将：
-1. 检测 Claude Code 和/或 OpenCode 安装
-2. 将技能文件安装到相应位置：
-   - Claude Code: `~/.claude/commands/nexus.md`
-   - OpenCode: `~/.config/opencode/skills/nexus-cli/SKILL.md`
-3. 创建默认配置文件 `.nexus-config.yaml`
-4. 检查可选依赖项（PAL MCP、Gemini CLI、Codex CLI、Ralph）
+1. 将 Nexus 注册为 Claude Code 技能到 `~/.claude/commands/nexus.md`
+2. 创建默认配置文件 `.nexus-config.yaml`
+3. 检查可选依赖项（PAL MCP、Gemini CLI、Codex CLI）
 
 ### PAL MCP 配置（可选）
 
@@ -255,7 +252,6 @@ cd ~/.claude && git clone https://github.com/CoderMageFox/nexus-cli.git skills/n
 | 执行器 | 最适合 | 图标 |
 |--------|--------|------|
 | **Claude** | 架构设计、深度分析、安全审查、复杂推理 | 🧠 |
-| **OpenCode** | 与 Claude 相同，用于 OpenCode 环境 | 🌐 |
 | **Gemini** | 前端 UI、算法、网络搜索、创意任务 | 💎 |
 | **Codex** | 后端 API、数据库、服务端逻辑 | 🔷 |
 
@@ -332,10 +328,7 @@ quality_gates:
 ```
 nexus-cli/
 ├── commands/
-│   └── nexus.md           # Claude Code 技能定义
-├── skills/
-│   └── nexus-cli/
-│       └── SKILL.md       # OpenCode 技能定义
+│   └── nexus.md           # 主技能定义
 ├── lib/                   # 库模块
 ├── locales/               # 国际化翻译 (en-US, zh-CN)
 ├── templates/             # 文档模板
