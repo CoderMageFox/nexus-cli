@@ -14,6 +14,7 @@ import json
 import os
 import time
 import hashlib
+import threading
 from dataclasses import dataclass, asdict, field
 from typing import List, Dict, Optional, Any
 from datetime import datetime
@@ -90,6 +91,7 @@ class CheckpointManager:
     def __init__(self, project_root: str = "."):
         self.project_root = Path(project_root).resolve()
         self.checkpoint_dir = self.project_root / self.CHECKPOINT_DIR
+        self._lock = threading.Lock()
 
     def _ensure_dir(self):
         """Ensure checkpoint directory exists"""
@@ -159,15 +161,21 @@ class CheckpointManager:
 
         data = to_dict(checkpoint)
 
+        temp_path = checkpoint_path.with_suffix('.tmp')
         try:
             # Write atomically using temp file
-            temp_path = checkpoint_path.with_suffix('.tmp')
             with open(temp_path, 'w', encoding='utf-8') as f:
                 json.dump(data, f, indent=2, ensure_ascii=False)
             temp_path.rename(checkpoint_path)
             return True
         except Exception as e:
             print(f"Error saving checkpoint: {e}")
+            # Clean up temp file on failure
+            try:
+                if temp_path.exists():
+                    temp_path.unlink()
+            except OSError:
+                pass
             return False
 
     def load_checkpoint(self, feature_name: str) -> Optional[ExecutionCheckpoint]:
@@ -238,32 +246,33 @@ class CheckpointManager:
         error_message: Optional[str] = None,
         result: Optional[str] = None
     ) -> bool:
-        """Update status of a specific task"""
-        checkpoint = self.load_checkpoint(feature_name)
-        if not checkpoint:
+        """Update status of a specific task (thread-safe)"""
+        with self._lock:
+            checkpoint = self.load_checkpoint(feature_name)
+            if not checkpoint:
+                return False
+
+            for batch in checkpoint.batches:
+                for task in batch.tasks:
+                    if task.task_id == task_id:
+                        task.status = status
+                        if status == TaskStatus.IN_PROGRESS:
+                            task.start_time = datetime.now().isoformat()
+                        elif status in [TaskStatus.COMPLETED, TaskStatus.FAILED]:
+                            task.end_time = datetime.now().isoformat()
+                        if error_message:
+                            task.error_message = error_message
+                            checkpoint.error_log.append({
+                                "task_id": task_id,
+                                "error": error_message,
+                                "timestamp": datetime.now().isoformat()
+                            })
+                        if result:
+                            task.result = result
+
+                        return self.save_checkpoint(checkpoint)
+
             return False
-
-        for batch in checkpoint.batches:
-            for task in batch.tasks:
-                if task.task_id == task_id:
-                    task.status = status
-                    if status == TaskStatus.IN_PROGRESS:
-                        task.start_time = datetime.now().isoformat()
-                    elif status in [TaskStatus.COMPLETED, TaskStatus.FAILED]:
-                        task.end_time = datetime.now().isoformat()
-                    if error_message:
-                        task.error_message = error_message
-                        checkpoint.error_log.append({
-                            "task_id": task_id,
-                            "error": error_message,
-                            "timestamp": datetime.now().isoformat()
-                        })
-                    if result:
-                        task.result = result
-
-                    return self.save_checkpoint(checkpoint)
-
-        return False
 
     def update_batch_status(
         self,
@@ -271,23 +280,24 @@ class CheckpointManager:
         batch_id: int,
         status: BatchStatus
     ) -> bool:
-        """Update status of a batch"""
-        checkpoint = self.load_checkpoint(feature_name)
-        if not checkpoint:
+        """Update status of a batch (thread-safe)"""
+        with self._lock:
+            checkpoint = self.load_checkpoint(feature_name)
+            if not checkpoint:
+                return False
+
+            for batch in checkpoint.batches:
+                if batch.batch_id == batch_id:
+                    batch.status = status
+                    if status == BatchStatus.IN_PROGRESS:
+                        batch.start_time = datetime.now().isoformat()
+                        checkpoint.current_batch = batch_id
+                    elif status in [BatchStatus.COMPLETED, BatchStatus.FAILED, BatchStatus.PARTIAL]:
+                        batch.end_time = datetime.now().isoformat()
+
+                    return self.save_checkpoint(checkpoint)
+
             return False
-
-        for batch in checkpoint.batches:
-            if batch.batch_id == batch_id:
-                batch.status = status
-                if status == BatchStatus.IN_PROGRESS:
-                    batch.start_time = datetime.now().isoformat()
-                    checkpoint.current_batch = batch_id
-                elif status in [BatchStatus.COMPLETED, BatchStatus.FAILED, BatchStatus.PARTIAL]:
-                    batch.end_time = datetime.now().isoformat()
-
-                return self.save_checkpoint(checkpoint)
-
-        return False
 
     def get_resume_point(self, feature_name: str) -> Optional[Dict]:
         """Get the point from which execution should resume"""
@@ -301,7 +311,7 @@ class CheckpointManager:
                 # Find incomplete tasks in this batch
                 incomplete_tasks = [
                     task for task in batch.tasks
-                    if task.status in [TaskStatus.PENDING, TaskStatus.FAILED]
+                    if task.status in [TaskStatus.PENDING, TaskStatus.IN_PROGRESS, TaskStatus.FAILED]
                 ]
                 return {
                     "batch_id": batch.batch_id,
@@ -362,6 +372,14 @@ class CheckpointManager:
             "has_errors": len(checkpoint.error_log) > 0,
             "error_count": len(checkpoint.error_log)
         }
+
+    def save_checkpoint_if_loaded(self, feature_name: str) -> bool:
+        """Force-save the current checkpoint state (for signal handlers).
+        Re-loads and saves to ensure updated_at is refreshed."""
+        checkpoint = self.load_checkpoint(feature_name)
+        if checkpoint:
+            return self.save_checkpoint(checkpoint)
+        return False
 
     def delete_checkpoint(self, feature_name: str) -> bool:
         """Delete checkpoint for a feature"""

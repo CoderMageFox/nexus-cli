@@ -65,7 +65,7 @@ from lib.quality_gate import (
     GATE_PROMPTS,
 )
 
-__version__ = "4.0.3"
+__version__ = "1.1.0"
 __all__ = [
     # Checkpoint
     "CheckpointManager",

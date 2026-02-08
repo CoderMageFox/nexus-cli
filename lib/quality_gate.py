@@ -191,9 +191,12 @@ class QualityGate:
         return commands.get(self._project_type, commands.get("default", ""))
 
     def _notify(self, gate_type: GateType, status: GateStatus, message: str = ""):
-        """Notify status update"""
+        """Notify status update (safe against callback errors)"""
         if self.on_status_update:
-            self.on_status_update(gate_type, status, message)
+            try:
+                self.on_status_update(gate_type, status, message)
+            except Exception:
+                pass
 
     def _run_command(
         self,

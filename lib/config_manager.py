@@ -56,6 +56,7 @@ class ExecutorConfig:
     timeout_minutes: int = 10
     max_retries: int = 3
     role: str = "default"  # PAL clink role
+    preferred_model: str = ""  # Preferred PAL model for this executor
 
 
 @dataclass
@@ -214,19 +215,22 @@ class ConfigManager:
                     "claude": ExecutorConfig(
                         enabled=True,
                         timeout_minutes=15,
-                        max_retries=2
+                        max_retries=2,
+                        preferred_model="anthropic/claude-opus-4-6"
                     ),
                     "gemini": ExecutorConfig(
                         enabled=True,
                         timeout_minutes=10,
                         max_retries=3,
-                        role="default"
+                        role="default",
+                        preferred_model="gemini-3-pro-preview"
                     ),
                     "codex": ExecutorConfig(
                         enabled=True,
                         timeout_minutes=10,
                         max_retries=3,
-                        role="default"
+                        role="default",
+                        preferred_model="openai/gpt-5.3-codex"
                     )
                 }
             ),
@@ -263,10 +267,14 @@ class ConfigManager:
         env_mappings = {
             "NEXUS_MAX_PARALLEL_TASKS": ("execution", "max_parallel_tasks", int),
             "NEXUS_TASK_TIMEOUT": ("execution", "task_timeout_minutes", int),
+            "NEXUS_BATCH_TIMEOUT": ("execution", "batch_timeout_minutes", int),
             "NEXUS_ERROR_STRATEGY": ("execution", "error_strategy", ErrorStrategy),
+            "NEXUS_MAX_RETRIES": ("execution", "max_retries", int),
             "NEXUS_LOG_LEVEL": ("logging", "level", LogLevel),
             "NEXUS_LANGUAGE": (None, "language", str),
             "NEXUS_DEFAULT_EXECUTOR": ("routing", "default_executor", str),
+            "NEXUS_SPEC_DIR": (None, "spec_dir", str),
+            "NEXUS_CHECKPOINT_DIR": (None, "checkpoint_dir", str),
         }
 
         for env_var, (section, field, type_fn) in env_mappings.items():
@@ -318,6 +326,8 @@ class ConfigManager:
                             exec_config.max_retries = exec_data["max_retries"]
                         if "role" in exec_data:
                             exec_config.role = exec_data["role"]
+                        if "preferred_model" in exec_data:
+                            exec_config.preferred_model = exec_data["preferred_model"]
 
         # Execution section
         if "execution" in data:
@@ -403,11 +413,19 @@ class ConfigManager:
         # Check task description keywords
         description_lower = task_description.lower()
 
+        # Architecture/analysis keywords (check first - highest priority)
+        architecture_keywords = [
+            "architecture", "design", "analyze", "review", "audit",
+            "security", "performance", "optimize", "refactor"
+        ]
+        if any(kw in description_lower for kw in architecture_keywords):
+            return "claude"
+
         # Frontend keywords
         frontend_keywords = [
             "component", "ui", "frontend", "react", "vue", "angular",
             "css", "style", "layout", "form", "button", "modal",
-            "interface", "design", "animation", "responsive"
+            "interface", "animation", "responsive"
         ]
         if any(kw in description_lower for kw in frontend_keywords):
             if config.routing.executors.get("gemini", ExecutorConfig()).enabled:
@@ -423,36 +441,22 @@ class ConfigManager:
             if config.routing.executors.get("codex", ExecutorConfig()).enabled:
                 return "codex"
 
-        # Architecture/analysis keywords
-        architecture_keywords = [
-            "architecture", "design", "analyze", "review", "audit",
-            "security", "performance", "optimize", "refactor"
-        ]
-        if any(kw in description_lower for kw in architecture_keywords):
-            return "claude"
-
         return config.routing.default_executor
 
     def _match_pattern(self, path: str, pattern: str) -> bool:
         """Match a path against a glob pattern"""
+        from pathlib import PurePosixPath
         import fnmatch
+
         # Normalize path separators
         path = path.replace("\\", "/")
         pattern = pattern.replace("\\", "/")
 
-        # Handle ** patterns
-        if "**" in pattern:
-            # Split pattern into parts
-            parts = pattern.split("**")
-            if len(parts) == 2:
-                prefix, suffix = parts
-                if prefix and not path.startswith(prefix.rstrip("/")):
-                    return False
-                if suffix and not fnmatch.fnmatch(path, f"*{suffix}"):
-                    return False
-                return True
-
-        return fnmatch.fnmatch(path, pattern)
+        # Use PurePosixPath.match for ** support
+        try:
+            return PurePosixPath(path).match(pattern)
+        except (ValueError, TypeError):
+            return fnmatch.fnmatch(path, pattern)
 
     def save_project_config(self, config: NexusConfig) -> bool:
         """Save configuration to project config file"""

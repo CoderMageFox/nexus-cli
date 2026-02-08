@@ -771,6 +771,22 @@ mcp__pal__clink({prompt: "任务2...", cli_name: "codex"})
 mcp__pal__clink({prompt: "任务3...", cli_name: "gemini"})
 ```
 
+### 🔴 PAL 模型版本要求 (2026-02)
+
+调用 PAL 工具（`chat`, `thinkdeep`, `codereview`, `debug`, `precommit` 等）时，
+**必须**使用以下最新模型名，禁止使用 `"auto"` 或过时模型名：
+
+| 用途 | 模型名 | 说明 |
+|------|--------|------|
+| 代码审查/分析 | `gemini-3-pro-preview` | Google Gemini 3 Pro (score 100, 1M ctx) |
+| 深度推理/架构 | `anthropic/claude-opus-4-6` | Claude Opus 4.6 (score 100, 1M ctx) |
+| 编码/后端任务 | `openai/gpt-5.3-codex` | GPT-5.3 Codex (score 100, 400K ctx) |
+
+**配置来源**: `.nexus-config.yaml` → `routing.executors.[name].preferred_model`
+
+> ⚠️ 过时模型名（如 `gpt-5.2-pro`, `claude-opus-4.5`, `gemini-2.5-pro`）仍可用但非最优。
+> 始终优先使用配置文件中指定的 `preferred_model`。
+
 ### TodoWrite 实时更新示例
 
 **批次 1 开始**:
@@ -841,12 +857,15 @@ mcp__pal__codereview({
   "total_steps": 2,
   "next_step_required": true,
   "findings": "",
-  "model": "auto",
+  "model": "gemini-3-pro-preview",
   "relevant_files": [/* 本次更改的文件列表 */],
   "review_type": "full",
   "focus_on": "security, performance, quality"
 })
 ```
+
+> **模型选择说明**: 质量门控默认使用 `gemini-3-pro-preview`（score 100, 1M context）。
+> 可在 `.nexus-config.yaml` 的 `executors.[name].preferred_model` 中自定义。
 
 ### 步骤 6.3: 门控结果汇总
 

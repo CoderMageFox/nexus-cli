@@ -1,6 +1,6 @@
 #!/bin/bash
 # ═══════════════════════════════════════════════════════════════════════════════
-# Nexus CLI Interactive Installation Wizard (v4.0.4)
+# Nexus CLI Interactive Installation Wizard (v1.1.0)
 # ═══════════════════════════════════════════════════════════════════════════════
 #
 # This script provides an interactive wizard to:
@@ -54,9 +54,10 @@ CONFIG_OUTPUT=""
 
 # Read version
 if [ -f "$PROJECT_DIR/VERSION" ]; then
-    VERSION=$(cat "$PROJECT_DIR/VERSION" | tr -d '\n')
+    VERSION=$(<"$PROJECT_DIR/VERSION")
+    VERSION="${VERSION%"${VERSION##*[![:space:]]}"}"
 else
-    VERSION="4.0.3"
+    VERSION="1.1.0"
 fi
 
 # Default configuration values
@@ -185,6 +186,7 @@ install_pal_mcp() {
         # Use jq if available for proper JSON manipulation
         info "Configuring PAL MCP Server in ~/.claude.json"
         local temp_file=$(mktemp)
+        trap 'rm -f "$temp_file"' EXIT
         jq '.mcpServers.pal = {
             "command": "bash",
             "args": ["-c", "for p in $(which uvx 2>/dev/null) $HOME/.local/bin/uvx $HOME/.cargo/bin/uvx /opt/homebrew/bin/uvx /usr/local/bin/uvx uvx; do [ -x \"$p\" ] && exec \"$p\" --from git+https://github.com/BeehiveInnovations/pal-mcp-server.git pal-mcp-server; done; echo '\''uvx not found'\'' >&2; exit 1"]
@@ -1005,18 +1007,21 @@ routing:
       enabled: ${CFG_CLAUDE_ENABLED}
       timeout_minutes: 15
       max_retries: 2
+      preferred_model: "anthropic/claude-opus-4-6"
 
     gemini:
       enabled: ${CFG_GEMINI_ENABLED}
       timeout_minutes: 10
       max_retries: 3
       role: default
+      preferred_model: "gemini-3-pro-preview"
 
     codex:
       enabled: ${CFG_CODEX_ENABLED}
       timeout_minutes: 10
       max_retries: 3
       role: default
+      preferred_model: "openai/gpt-5.3-codex"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Execution Configuration

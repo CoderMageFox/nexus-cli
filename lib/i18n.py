@@ -110,9 +110,9 @@ class I18n:
         if "zh" in env_lang.lower():
             return Language.ZH_CN
 
-        # Try system locale
+        # Try system locale (compatible with Python 3.11+)
         try:
-            system_locale = locale.getdefaultlocale()[0] or ""
+            system_locale = locale.getlocale()[0] or ""
             if "zh" in system_locale.lower():
                 return Language.ZH_CN
         except Exception:
