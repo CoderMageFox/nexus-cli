@@ -16,6 +16,7 @@ import os
 import time
 import logging
 import sys
+import threading
 from dataclasses import dataclass, asdict, field
 from typing import List, Dict, Optional, Any
 from datetime import datetime
@@ -93,6 +94,9 @@ class ExecutionLogger:
 
         self._ensure_dir()
         self._setup_loggers()
+
+        # Thread safety lock for stats and audit file
+        self._lock = threading.Lock()
 
         # Performance tracking
         self._task_starts: Dict[str, float] = {}
@@ -179,7 +183,7 @@ class ExecutionLogger:
         log_msg = self._format_event(event)
         self.logger.log(level, log_msg)
 
-        # Audit log (JSON lines)
+        # Audit log (JSON lines) — thread-safe write
         audit_entry = {
             "timestamp": event.timestamp,
             "event_type": event.event_type.value,
@@ -193,8 +197,9 @@ class ExecutionLogger:
             "metadata": event.metadata
         }
 
-        with open(self.audit_file, 'a', encoding='utf-8') as f:
-            f.write(json.dumps(audit_entry, ensure_ascii=False) + '\n')
+        with self._lock:
+            with open(self.audit_file, 'a', encoding='utf-8') as f:
+                f.write(json.dumps(audit_entry, ensure_ascii=False) + '\n')
 
     def _format_event(self, event: LogEvent) -> str:
         """Format event for human-readable log"""
@@ -241,7 +246,8 @@ class ExecutionLogger:
         """Log start of execution"""
         self.feature_name = feature_name
         self._execution_start = time.time()
-        self.stats["total_tasks"] = total_tasks
+        with self._lock:
+            self.stats["total_tasks"] = total_tasks
 
         self._log_event(LogEvent(
             timestamp=datetime.now().isoformat(),
@@ -260,7 +266,8 @@ class ExecutionLogger:
         duration_ms = None
         if self._execution_start:
             duration_ms = int((time.time() - self._execution_start) * 1000)
-            self.stats["total_duration_ms"] = duration_ms
+            with self._lock:
+                self.stats["total_duration_ms"] = duration_ms
 
         self._log_event(LogEvent(
             timestamp=datetime.now().isoformat(),
@@ -278,7 +285,8 @@ class ExecutionLogger:
 
     def log_batch_start(self, batch_id: int, batch_name: str, task_count: int):
         """Log start of batch execution"""
-        self._batch_starts[batch_id] = time.time()
+        with self._lock:
+            self._batch_starts[batch_id] = time.time()
 
         self._log_event(LogEvent(
             timestamp=datetime.now().isoformat(),
@@ -291,9 +299,10 @@ class ExecutionLogger:
     def log_batch_end(self, batch_id: int, batch_name: str, status: str):
         """Log end of batch execution"""
         duration_ms = None
-        if batch_id in self._batch_starts:
-            duration_ms = int((time.time() - self._batch_starts[batch_id]) * 1000)
-            del self._batch_starts[batch_id]
+        with self._lock:
+            if batch_id in self._batch_starts:
+                duration_ms = int((time.time() - self._batch_starts[batch_id]) * 1000)
+                del self._batch_starts[batch_id]
 
         self._log_event(LogEvent(
             timestamp=datetime.now().isoformat(),
@@ -310,7 +319,8 @@ class ExecutionLogger:
 
     def log_task_start(self, task_id: str, task_name: str, executor: str, batch_id: Optional[int] = None):
         """Log start of task execution"""
-        self._task_starts[task_id] = time.time()
+        with self._lock:
+            self._task_starts[task_id] = time.time()
 
         self._log_event(LogEvent(
             timestamp=datetime.now().isoformat(),
@@ -332,17 +342,19 @@ class ExecutionLogger:
     ):
         """Log end of task execution"""
         duration_ms = None
-        if task_id in self._task_starts:
-            duration_ms = int((time.time() - self._task_starts[task_id]) * 1000)
-            del self._task_starts[task_id]
+        with self._lock:
+            if task_id in self._task_starts:
+                duration_ms = int((time.time() - self._task_starts[task_id]) * 1000)
+                del self._task_starts[task_id]
 
-        # Update statistics
-        if status == "completed":
-            self.stats["completed_tasks"] += 1
-        elif status == "failed":
-            self.stats["failed_tasks"] += 1
-        elif status == "skipped":
-            self.stats["skipped_tasks"] += 1
+        # Update statistics (thread-safe)
+        with self._lock:
+            if status == "completed":
+                self.stats["completed_tasks"] += 1
+            elif status == "failed":
+                self.stats["failed_tasks"] += 1
+            elif status == "skipped":
+                self.stats["skipped_tasks"] += 1
 
         metadata = {}
         if error_message:
@@ -362,7 +374,8 @@ class ExecutionLogger:
 
     def log_task_retry(self, task_id: str, task_name: str, attempt: int, reason: str):
         """Log task retry attempt"""
-        self.stats["retried_tasks"] += 1
+        with self._lock:
+            self.stats["retried_tasks"] += 1
 
         self._log_event(LogEvent(
             timestamp=datetime.now().isoformat(),
@@ -378,7 +391,8 @@ class ExecutionLogger:
 
     def log_executor_call(self, executor: str, task_id: str, prompt_preview: str):
         """Log call to executor"""
-        self.stats["executor_calls"][executor] = self.stats["executor_calls"].get(executor, 0) + 1
+        with self._lock:
+            self.stats["executor_calls"][executor] = self.stats["executor_calls"].get(executor, 0) + 1
 
         self._log_event(LogEvent(
             timestamp=datetime.now().isoformat(),
@@ -404,7 +418,8 @@ class ExecutionLogger:
 
     def log_executor_error(self, executor: str, task_id: str, error: str):
         """Log executor error"""
-        self.stats["executor_errors"][executor] = self.stats["executor_errors"].get(executor, 0) + 1
+        with self._lock:
+            self.stats["executor_errors"][executor] = self.stats["executor_errors"].get(executor, 0) + 1
 
         self._log_event(LogEvent(
             timestamp=datetime.now().isoformat(),

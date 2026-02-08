@@ -10,25 +10,20 @@ Provides task execution with:
 Storage location: .nexus-temp/
 """
 
-import asyncio
-import os
-import sys
 import time
 import signal
 from dataclasses import dataclass, field
 from typing import List, Dict, Optional, Callable, Any
 from enum import Enum
-from datetime import datetime
 from pathlib import Path
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError, as_completed
 
 # Import local modules
 from lib.checkpoint_manager import (
-    CheckpointManager, TaskStatus, BatchStatus,
-    ExecutionCheckpoint, TaskState, BatchState
+    CheckpointManager, TaskStatus, BatchStatus
 )
 from lib.config_manager import ConfigManager, NexusConfig, ErrorStrategy
-from lib.execution_logger import ExecutionLogger, EventType
+from lib.execution_logger import ExecutionLogger
 
 
 class ExecutionResult(str, Enum):
@@ -123,10 +118,22 @@ class ExecutionEngine:
         self._setup_signal_handlers()
 
     def _setup_signal_handlers(self):
-        """Setup handlers for graceful shutdown"""
+        """Setup handlers for graceful shutdown, preserving existing handlers"""
+        self._prev_sigint = signal.getsignal(signal.SIGINT)
+        self._prev_sigterm = signal.getsignal(signal.SIGTERM)
+
         def handle_interrupt(signum, frame):
             print("\n⚠️  Interrupt received, saving checkpoint...")
             self._cancelled = True
+            # Force-save checkpoint on interrupt
+            try:
+                self.checkpoint_manager.save_checkpoint_if_loaded(self.feature_name)
+            except Exception:
+                pass
+            # Call previous handler if it was a callable
+            prev = self._prev_sigint if signum == signal.SIGINT else self._prev_sigterm
+            if callable(prev) and prev not in (signal.SIG_DFL, signal.SIG_IGN):
+                prev(signum, frame)
 
         signal.signal(signal.SIGINT, handle_interrupt)
         signal.signal(signal.SIGTERM, handle_interrupt)
@@ -194,7 +201,10 @@ class ExecutionEngine:
 
         # Notify task start
         if self._on_task_start:
-            self._on_task_start(task_id, task_name)
+            try:
+                self._on_task_start(task_id, task_name)
+            except Exception:
+                pass
 
         self.logger.log_task_start(task_id, task_name, executor)
         self.checkpoint_manager.update_task_status(
@@ -232,9 +242,8 @@ class ExecutionEngine:
                     retry_count=retry_count
                 )
 
-                self.logger.log_task_complete(
-                    task_id, task_name, executor,
-                    success=True, duration=duration, output=str(result) if result else None
+                self.logger.log_task_end(
+                    task_id, task_name, executor, status="completed"
                 )
                 self.checkpoint_manager.update_task_status(
                     self.feature_name, task_id, TaskStatus.COMPLETED,
@@ -242,17 +251,20 @@ class ExecutionEngine:
                 )
 
                 if self._on_task_complete:
-                    self._on_task_complete(task_result)
+                    try:
+                        self._on_task_complete(task_result)
+                    except Exception:
+                        pass
 
                 return task_result
 
             except TimeoutError:
                 last_error = f"Task timed out after {timeout_seconds} seconds"
-                self.logger.log_error(task_id, last_error, "timeout")
+                self.logger.log_error(last_error, task_id=task_id, error_type="timeout")
 
             except Exception as e:
                 last_error = str(e)
-                self.logger.log_error(task_id, last_error, "execution_error")
+                self.logger.log_error(last_error, task_id=task_id, error_type="execution_error")
 
             # Handle error based on strategy
             decision = self._handle_error(task_id, task_name, last_error, retry_count)
@@ -260,7 +272,7 @@ class ExecutionEngine:
             if decision == "retry":
                 retry_count += 1
                 if retry_count <= max_retries:
-                    self.logger.log_retry(task_id, task_name, retry_count, max_retries)
+                    self.logger.log_task_retry(task_id, task_name, retry_count, last_error)
                     time.sleep(retry_delay)
                     continue
 
@@ -282,7 +294,10 @@ class ExecutionEngine:
                 )
 
                 if self._on_task_complete:
-                    self._on_task_complete(task_result)
+                    try:
+                        self._on_task_complete(task_result)
+                    except Exception:
+                        pass
 
                 return task_result
 
@@ -308,34 +323,22 @@ class ExecutionEngine:
         )
 
         if self._on_task_complete:
-            self._on_task_complete(task_result)
+            try:
+                self._on_task_complete(task_result)
+            except Exception:
+                pass
 
         return task_result
 
     def _execute_with_timeout(self, func: Callable, timeout: int) -> Any:
-        """Execute a function with timeout"""
-        import threading
-
-        result = [None]
-        exception = [None]
-
-        def target():
+        """Execute a function with timeout using ThreadPoolExecutor"""
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            future = pool.submit(func)
             try:
-                result[0] = func()
-            except Exception as e:
-                exception[0] = e
-
-        thread = threading.Thread(target=target)
-        thread.start()
-        thread.join(timeout)
-
-        if thread.is_alive():
-            raise TimeoutError(f"Execution timed out after {timeout} seconds")
-
-        if exception[0]:
-            raise exception[0]
-
-        return result[0]
+                return future.result(timeout=timeout)
+            except FuturesTimeoutError:
+                future.cancel()
+                raise TimeoutError(f"Execution timed out after {timeout} seconds")
 
     def _handle_error(
         self,
@@ -396,7 +399,7 @@ class ExecutionEngine:
         Returns:
             BatchResult with all task outcomes
         """
-        self.logger.log_batch_start(batch_id, batch_name, "serial", len(tasks))
+        self.logger.log_batch_start(batch_id, batch_name, len(tasks))
         self.checkpoint_manager.update_batch_status(
             self.feature_name, batch_id, BatchStatus.IN_PROGRESS
         )
@@ -422,14 +425,16 @@ class ExecutionEngine:
 
             # Update progress
             if self._on_progress_update:
-                progress = {
-                    "batch_id": batch_id,
-                    "completed": len(batch_result.task_results),
-                    "total": len(tasks),
-                    "success": batch_result.success_count,
-                    "failed": batch_result.failed_count
-                }
-                self._on_progress_update(progress)
+                try:
+                    self._on_progress_update({
+                        "batch_id": batch_id,
+                        "completed": len(batch_result.task_results),
+                        "total": len(tasks),
+                        "success": batch_result.success_count,
+                        "failed": batch_result.failed_count
+                    })
+                except Exception:
+                    pass
 
             # Check for fail-fast
             if (task_result.result == ExecutionResult.FAILED and
@@ -448,18 +453,16 @@ class ExecutionEngine:
         else:
             batch_result.status = BatchStatus.PARTIAL
 
-        self.logger.log_batch_complete(
-            batch_id, batch_name,
-            batch_result.success_count,
-            batch_result.failed_count,
-            batch_result.duration_seconds
-        )
+        self.logger.log_batch_end(batch_id, batch_name, batch_result.status.value)
         self.checkpoint_manager.update_batch_status(
             self.feature_name, batch_id, batch_result.status
         )
 
         if self._on_batch_complete:
-            self._on_batch_complete(batch_result)
+            try:
+                self._on_batch_complete(batch_result)
+            except Exception:
+                pass
 
         return batch_result
 
@@ -483,7 +486,7 @@ class ExecutionEngine:
             BatchResult with all task outcomes
         """
         max_parallel = self.config.execution.max_parallel_tasks
-        self.logger.log_batch_start(batch_id, batch_name, "parallel", len(tasks))
+        self.logger.log_batch_start(batch_id, batch_name, len(tasks))
         self.checkpoint_manager.update_batch_status(
             self.feature_name, batch_id, BatchStatus.IN_PROGRESS
         )
@@ -537,14 +540,16 @@ class ExecutionEngine:
 
                 # Update progress
                 if self._on_progress_update:
-                    progress = {
-                        "batch_id": batch_id,
-                        "completed": len(batch_result.task_results),
-                        "total": len(tasks),
-                        "success": batch_result.success_count,
-                        "failed": batch_result.failed_count
-                    }
-                    self._on_progress_update(progress)
+                    try:
+                        self._on_progress_update({
+                            "batch_id": batch_id,
+                            "completed": len(batch_result.task_results),
+                            "total": len(tasks),
+                            "success": batch_result.success_count,
+                            "failed": batch_result.failed_count
+                        })
+                    except Exception:
+                        pass
 
             self._executor_pool = None
 
@@ -560,18 +565,16 @@ class ExecutionEngine:
         else:
             batch_result.status = BatchStatus.PARTIAL
 
-        self.logger.log_batch_complete(
-            batch_id, batch_name,
-            batch_result.success_count,
-            batch_result.failed_count,
-            batch_result.duration_seconds
-        )
+        self.logger.log_batch_end(batch_id, batch_name, batch_result.status.value)
         self.checkpoint_manager.update_batch_status(
             self.feature_name, batch_id, batch_result.status
         )
 
         if self._on_batch_complete:
-            self._on_batch_complete(batch_result)
+            try:
+                self._on_batch_complete(batch_result)
+            except Exception:
+                pass
 
         return batch_result
 
@@ -660,12 +663,8 @@ class ExecutionEngine:
         total_failed = sum(r.failed_count for r in results)
         total_duration = sum(r.duration_seconds for r in results)
 
-        self.logger.log_execution_complete(
-            self.feature_name,
-            total_success,
-            total_failed,
-            total_duration
-        )
+        status = "completed" if total_failed == 0 else "partial"
+        self.logger.log_execution_end(status)
 
         return results
 
